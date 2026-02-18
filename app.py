@@ -506,6 +506,14 @@ def migrate_db():
                 logger.info("Created daily_actions table")
             except Exception as e:
                 logger.warning(f"daily_actions table may already exist: {e}")
+            try:
+                c.execute("ALTER TABLE daily_actions ADD COLUMN IF NOT EXISTS user_id INTEGER")
+                c.execute("ALTER TABLE daily_actions ADD COLUMN IF NOT EXISTS action TEXT")
+                c.execute("ALTER TABLE daily_actions ADD COLUMN IF NOT EXISTS verse_id INTEGER")
+                c.execute("ALTER TABLE daily_actions ADD COLUMN IF NOT EXISTS event_date TEXT")
+                c.execute("ALTER TABLE daily_actions ADD COLUMN IF NOT EXISTS timestamp TEXT")
+            except Exception:
+                pass
                 
         else:
             # SQLite migrations
@@ -604,6 +612,21 @@ def migrate_db():
                 logger.info("Created daily_actions table")
             except Exception as e:
                 logger.warning(f"daily_actions table may already exist: {e}")
+            try:
+                c.execute("PRAGMA table_info(daily_actions)")
+                cols = {str(r[1]).lower() for r in c.fetchall()}
+                if 'user_id' not in cols:
+                    c.execute("ALTER TABLE daily_actions ADD COLUMN user_id INTEGER")
+                if 'action' not in cols:
+                    c.execute("ALTER TABLE daily_actions ADD COLUMN action TEXT")
+                if 'verse_id' not in cols:
+                    c.execute("ALTER TABLE daily_actions ADD COLUMN verse_id INTEGER")
+                if 'event_date' not in cols:
+                    c.execute("ALTER TABLE daily_actions ADD COLUMN event_date TEXT")
+                if 'timestamp' not in cols:
+                    c.execute("ALTER TABLE daily_actions ADD COLUMN timestamp TEXT")
+            except Exception as e:
+                logger.warning(f"Could not migrate daily_actions columns: {e}")
         
         conn.commit()
         logger.info("Database migrations completed")

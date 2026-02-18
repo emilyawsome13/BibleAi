@@ -937,16 +937,6 @@
                     <div class="stat-label">Active Users Now</div>
                     <div class="stat-value" id="statActiveNow">0</div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-icon">&#128200;</div>
-                    <div class="stat-label">Conversion Rate</div>
-                    <div class="stat-value" id="statConversion">0%</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon">&#128181;</div>
-                    <div class="stat-label">Revenue</div>
-                    <div class="stat-value" id="statRevenue">$0.00</div>
-                </div>
             </div>
 
             <!-- Quick Actions -->
@@ -1393,10 +1383,7 @@
                 insightsData = data;
                 const activeNowEl = document.getElementById('statActiveNow');
                 if (activeNowEl) activeNowEl.textContent = data.active_users_now ?? 0;
-                const conversionEl = document.getElementById('statConversion');
-                if (conversionEl) conversionEl.textContent = `${Number(data.conversion_rate || 0).toFixed(2)}%`;
-                const revenueEl = document.getElementById('statRevenue');
-                if (revenueEl) revenueEl.textContent = moneyFromCents(data.revenue_cents || 0);
+                // Conversion rate + revenue removed from dashboard UI
                 const retentionD1 = document.getElementById('retentionD1');
                 if (retentionD1) retentionD1.textContent = `${Number(data.retention?.day_1 || 0).toFixed(2)}%`;
                 const retentionD7 = document.getElementById('retentionD7');
@@ -2435,7 +2422,7 @@
                 const icons = {
                     'BAN': '[B]', 'UNBAN': '[U]', 'RESTRICT_COMMENTS': '[R]', 'UNRESTRICT': '[U]',
                     'DELETE_COMMENT': '[D]', 'UPDATE_ROLE': '[ROLE]', 'ADMIN_LOGIN': '[LOGIN]',
-                    'UPDATE_SETTINGS': '[CFG]'
+                    'UPDATE_SETTINGS': '[CFG]', 'USER_LOGIN': '[LOGIN]', 'USER_COMMENT': '[C]', 'USER_COMMUNITY': '[C]'
                 };
                 
                 let html = '';

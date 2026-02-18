@@ -216,7 +216,14 @@ def _get_table_columns(c, db_type, table_name):
             rows = c.fetchall()
             for row in rows:
                 if hasattr(row, 'keys'):
-                    cols.add(str(row.get('column_name', '')).lower())
+                    try:
+                        cols.add(str(row['column_name']).lower())
+                    except Exception:
+                        try:
+                            row = _row_to_dict(row)
+                            cols.add(str(row.get('column_name', '')).lower())
+                        except Exception:
+                            pass
                 else:
                     cols.add(str(row[0]).lower())
         else:
@@ -1848,6 +1855,7 @@ def _dispatch_announcement_row(c, db_type, announcement_row):
         users = c.fetchall()
         user_ids = []
         for u in users:
+            u = _row_to_dict(u)
             uid = u.get('id') if hasattr(u, 'keys') else u[0]
             if uid is not None:
                 user_ids.append(uid)

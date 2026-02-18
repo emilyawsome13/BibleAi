@@ -102,6 +102,13 @@
             flex-direction: column;
         }
 
+        html[data-theme="dark"] body {
+            background: radial-gradient(720px 460px at 10% 8%, rgba(255,255,255,0.05), transparent 68%),
+                        radial-gradient(620px 420px at 88% 6%, rgba(255,255,255,0.04), transparent 70%),
+                        radial-gradient(520px 420px at 50% 110%, rgba(255,255,255,0.045), transparent 72%),
+                        linear-gradient(180deg, #040405 0%, #0a0b10 100%);
+        }
+
         /* Animated Background */
         .ambient-bg {
             position: fixed;
@@ -859,21 +866,16 @@
 
         @media (min-width: 1024px) {
             .content {
-                padding: 0;
-                padding-bottom: 20px;
-                display: grid;
-                grid-template-columns: 1fr 520px;
-                grid-template-rows: auto 1fr;
-                gap: 28px;
-                align-content: start;
-                height: calc(100vh - 24px);
-                overflow: hidden;
+                padding: 8px 0 24px;
+                max-width: 1200px;
+                margin: 0 auto;
+                overflow-y: auto;
             }
         }
 
         @media (min-width: 1400px) {
             .content {
-                grid-template-columns: 1fr 560px;
+                max-width: 1320px;
             }
         }
 
@@ -1232,56 +1234,24 @@
 
         @media (min-width: 1024px) {
             .tab-view {
-                display: none !important;
+                display: none;
             }
             
-            .tab-view.desktop-active {
-                display: block !important;
-                overflow-y: auto;
-                max-height: 100%;
-                padding-right: 8px;
-            }
-            
-            #discover {
-                grid-column: 1;
-                grid-row: 1 / span 2;
-            }
-            
-            #recommendations, #library, #comments {
-                grid-column: 2;
-                grid-row: span 1;
-            }
-
-            #about {
-                grid-column: 1 / span 2;
-                grid-row: span 2;
-            }
-
-            #profile {
-                grid-column: 1 / span 2;
-            }
-        }
-
-        @media (min-width: 1024px) {
-            body.tab-recommendations .content,
-            body.tab-library .content,
-            body.tab-comments .content,
-            body.tab-profile .content,
-            body.tab-about .content,
-            body.tab-donation .content {
-                grid-template-columns: 1fr;
-            }
-
-            body.tab-recommendations .tab-view.desktop-active,
-            body.tab-library .tab-view.desktop-active,
-            body.tab-comments .tab-view.desktop-active,
-            body.tab-profile .tab-view.desktop-active,
-            body.tab-about .tab-view.desktop-active,
-            body.tab-donation .tab-view.desktop-active {
-                grid-column: 1 / -1;
-                max-width: 1200px;
-                margin: 0 auto;
+            .tab-view.active {
+                display: block;
+                overflow-y: visible;
                 padding-right: 0;
+            }
+
+            #discover,
+            #recommendations,
+            #library,
+            #comments,
+            #about,
+            #profile,
+            #donation {
+                grid-column: 1 / -1;
+                grid-row: auto;
             }
         }
 
@@ -4344,6 +4314,7 @@
         let isAdmin = false;
         let favoritesCollection = null;
         let currentCommentsView = 'verse';
+        let openReplyKey = null;
         let aboutSlideIndex = 0;
         let aboutTouchStartX = null;
         let aboutTouchMoved = false;
@@ -5198,6 +5169,7 @@
         function createRecCard(rec) {
             const div = document.createElement('div');
             div.className = 'rec-card';
+            div.dataset.rec = JSON.stringify(rec || {});
             div.innerHTML = `
                 <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--primary);">
                     <span>&#10024;</span>
@@ -5214,10 +5186,24 @@
         }
 
         async function recLike(id, btn) {
+            let payload = { verse_id: id };
+            try {
+                const raw = btn?.closest('.rec-card')?.dataset?.rec;
+                if (raw) {
+                    const rec = JSON.parse(raw);
+                    payload.verse = {
+                        reference: rec.ref || rec.reference,
+                        text: rec.text,
+                        translation: rec.translation || rec.trans,
+                        source: rec.source,
+                        book: rec.book
+                    };
+                }
+            } catch (_) {}
             await fetch('/api/like', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({verse_id: id})
+                body: JSON.stringify(payload)
             });
             btn.innerHTML = '&#9829; Liked';
             btn.classList.add('liked');
@@ -5227,10 +5213,24 @@
         }
 
         async function recSave(id, btn) {
+            let payload = { verse_id: id };
+            try {
+                const raw = btn?.closest('.rec-card')?.dataset?.rec;
+                if (raw) {
+                    const rec = JSON.parse(raw);
+                    payload.verse = {
+                        reference: rec.ref || rec.reference,
+                        text: rec.text,
+                        translation: rec.translation || rec.trans,
+                        source: rec.source,
+                        book: rec.book
+                    };
+                }
+            } catch (_) {}
             await fetch('/api/save', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({verse_id: id})
+                body: JSON.stringify(payload)
             });
             btn.innerHTML = '&#128209; Saved';
             btn.classList.add('saved');
@@ -5480,6 +5480,10 @@
             } else {
                 list.innerHTML = comments.map(c => renderCommentItem(c, 'comment')).join('');
             }
+            if (openReplyKey) {
+                const input = document.querySelector(`#reply-box-${openReplyKey} .comment-input`);
+                if (input) input.focus();
+            }
             
             // Show delete buttons if admin
             if (isAdmin) {
@@ -5539,6 +5543,10 @@
             } else {
                 list.innerHTML = filtered.map(m => renderCommentItem(m, 'community')).join('');
             }
+            if (openReplyKey) {
+                const input = document.querySelector(`#reply-box-${openReplyKey} .comment-input`);
+                if (input) input.focus();
+            }
             
             if (isAdmin) {
                 document.querySelectorAll('.delete-comment-btn').forEach(btn => btn.classList.add('show'));
@@ -5573,6 +5581,17 @@
             if (settings.notifications) showToast('Message posted!');
         }
 
+        function formatLocalTimestamp(ts, options) {
+            if (!ts) return '';
+            const raw = String(ts).trim();
+            if (!raw) return '';
+            const hasZone = /Z|[+-]\d{2}:?\d{2}$/.test(raw);
+            const normalized = hasZone ? raw : `${raw}Z`;
+            const date = new Date(normalized);
+            if (Number.isNaN(date.getTime())) return raw;
+            return date.toLocaleString([], options || {});
+        }
+
         function renderCommentItem(c, type) {
             const isOwner = c.user_id === parseInt('{{ user.id }}');
             const reactions = c.reactions || { 'heart': 0, 'pray': 0, 'cross': 0 };
@@ -5580,6 +5599,8 @@
             const role = (c.user_role || 'user').toLowerCase();
             const roleDisplay = role.replace('_', ' ');
             const replyDisabled = commentRestriction.restricted ? 'disabled' : '';
+            const replyKey = `${type}-${c.id}`;
+            const replyOpen = openReplyKey === replyKey;
             
             return `
                 <div class="comment-item" id="${type}-${c.id}">
@@ -5591,7 +5612,7 @@
                                 <div class="comment-name">${c.user_name}</div>
                                 <span class="comment-role-badge comment-role-${role}">${escapeHtml(roleDisplay)}</span>
                             </div>
-                            <div class="comment-time">${new Date(c.timestamp).toLocaleString()}</div>
+                            <div class="comment-time">${formatLocalTimestamp(c.timestamp)}</div>
                         </div>
                     </div>
                     <div class="comment-text">${escapeHtml(c.text)}</div>
@@ -5602,7 +5623,7 @@
                         <button class="reply-btn" ${replyDisabled} onclick="showReplyBox(${c.id}, '${type}')">Reply (${c.reply_count || replies.length || 0})</button>
                     </div>
                     <div class="comment-replies" id="replies-${type}-${c.id}">${renderReplies(replies)}</div>
-                    <div class="reply-input-area" id="reply-box-${type}-${c.id}" style="display: none;">
+                    <div class="reply-input-area" id="reply-box-${type}-${c.id}" style="display: ${replyOpen ? 'flex' : 'none'};">
                         <input type="text" class="comment-input" placeholder="Write a reply..." id="reply-input-${type}-${c.id}" ${replyDisabled} onkeydown="if(event.key==='Enter')postReply(${c.id}, '${type}')">
                         <button class="send-btn" ${replyDisabled} onclick="postReply(${c.id}, '${type}')">Send</button>
                     </div>
@@ -5624,7 +5645,7 @@
                                     <div class="comment-name">${escapeHtml(r.user_name || 'Anonymous')}</div>
                                     <span class="comment-role-badge comment-role-${role}">${escapeHtml(roleDisplay)}</span>
                                 </div>
-                                <div class="comment-time">${r.timestamp ? new Date(r.timestamp).toLocaleString() : ''}</div>
+                                <div class="comment-time">${r.timestamp ? formatLocalTimestamp(r.timestamp) : ''}</div>
                             </div>
                         </div>
                         <div class="comment-text">${escapeHtml(r.text || '')}</div>
@@ -6729,7 +6750,7 @@ function loadAchievements(stats) {
                 <div class="comment" data-comment-id="${comment.id}">
                     <div class="comment-header">
                         <strong>${escapeHtml(comment.google_name || 'Anonymous')}</strong>
-                        <span>${new Date(comment.timestamp).toLocaleTimeString()}</span>
+                        <span>${formatLocalTimestamp(comment.timestamp, {hour: '2-digit', minute:'2-digit'})}</span>
                     </div>
                     <div class="comment-text">${escapeHtml(comment.text)}</div>
                     <div class="reaction-bar">
@@ -6824,7 +6845,17 @@ function loadAchievements(stats) {
         function showReplyBox(commentId, type = 'comment') {
             const box = document.getElementById(`reply-box-${type}-${commentId}`) || document.getElementById(`reply-box-${commentId}`);
             if (!box) return;
-            box.style.display = box.style.display === 'none' ? 'flex' : 'none';
+            const key = `${type}-${commentId}`;
+            const isOpen = openReplyKey === key;
+            openReplyKey = isOpen ? null : key;
+            document.querySelectorAll('.reply-input-area').forEach(el => {
+                el.style.display = 'none';
+            });
+            if (!isOpen) {
+                box.style.display = 'flex';
+                const input = document.getElementById(`reply-input-${type}-${commentId}`) || document.getElementById(`reply-input-${commentId}`);
+                if (input) input.focus();
+            }
         }
 
         async function postReply(commentId, type = 'comment') {
@@ -6852,7 +6883,7 @@ function loadAchievements(stats) {
                     return;
                 }
                 input.value = '';
-                showReplyBox(commentId, type);
+                openReplyKey = null;
                 if (parentType === 'community') loadCommunityMessages();
                 else loadComments();
                 loadProfileStats();
@@ -6916,6 +6947,7 @@ function loadAchievements(stats) {
 
         function switchCommentsView(view) {
             currentCommentsView = view === 'community' ? 'community' : 'verse';
+            openReplyKey = null;
             const verseSection = document.getElementById('verseCommentsSection');
             const communitySection = document.getElementById('communityCommentsSection');
             const verseBtn = document.getElementById('commentsViewVerseBtn');

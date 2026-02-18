@@ -228,6 +228,18 @@ def _get_table_columns(c, db_type, table_name):
         print(f"[WARN] Could not read columns for {table_name}: {e}")
     return cols
 
+def _row_to_dict(row):
+    if row is None:
+        return None
+    if isinstance(row, dict):
+        return row
+    if hasattr(row, 'keys'):
+        try:
+            return {k: row[k] for k in row.keys()}
+        except Exception:
+            return row
+    return row
+
 def _row_first_value(row, default=0):
     if row is None:
         return default
@@ -452,6 +464,7 @@ def _fetch_user_personas(c, db_type, user_ids):
     personas = {}
     for row in rows:
         if hasattr(row, 'keys'):
+            row = _row_to_dict(row)
             uid = row.get('id')
             personas[uid] = {
                 "name": row.get('name') or "Unknown",
@@ -530,6 +543,7 @@ def _read_audit_logs(c, db_type, limit=100, offset=0, action=None):
     target_user_ids = set()
     admin_user_ids = set()
     for row in rows:
+        row = _row_to_dict(row)
         if hasattr(row, 'keys'):
             log = {
                 "id": row.get('id'),
@@ -623,7 +637,7 @@ def log_action(action, details="", target_user_id=None, status="success", extras
         _ensure_audit_logs_schema(conn, c, db_type)
         admin = get_admin_session()
         admin_id = admin['role'] if admin else 'unknown'
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = datetime.now().isoformat()
         payload = {
             "message": str(details or ""),
             "status": str(status or "success").lower(),
@@ -1245,6 +1259,7 @@ def get_comments():
                     """, (item_type, item_id))
                 rows = c.fetchall()
                 for rr in rows:
+                    rr = _row_to_dict(rr)
                     key = (rr.get('reaction') if hasattr(rr, 'keys') else rr[0]) or ''
                     cnt = rr.get('cnt') if hasattr(rr, 'keys') else rr[1]
                     key = str(key).lower()
@@ -1267,6 +1282,7 @@ def get_comments():
                         WHERE parent_type = ? AND parent_id = ? AND COALESCE(is_deleted, 0) = 0
                     """, (item_type, item_id))
                 row = c.fetchone()
+                row = _row_to_dict(row)
                 return int((row.get('cnt') if hasattr(row, 'keys') else row[0]) if row else 0)
             except Exception:
                 return 0
@@ -1292,6 +1308,7 @@ def get_comments():
                 rows = c.fetchall()
                 result = []
                 for rr in rows:
+                    rr = _row_to_dict(rr)
                     if hasattr(rr, 'keys'):
                         result.append({
                             "text": rr.get('text') or "",
@@ -1781,7 +1798,7 @@ def get_settings():
             c.execute("SELECT value FROM system_settings WHERE key = %s", ('maintenance_mode',))
         else:
             c.execute("SELECT value FROM system_settings WHERE key = ?", ('maintenance_mode',))
-        row = c.fetchone()
+        row = _row_to_dict(c.fetchone())
         if row:
             maintenance_mode = (row.get('value') if hasattr(row, 'keys') else row[0]) or maintenance_mode
         conn.close()
@@ -1810,6 +1827,7 @@ def check_session():
 
 def _dispatch_announcement_row(c, db_type, announcement_row):
     """Insert notification rows for target users and mark announcement sent."""
+    announcement_row = _row_to_dict(announcement_row)
     if hasattr(announcement_row, 'keys'):
         ann_id = announcement_row.get('id')
         title = announcement_row.get('title') or 'Announcement'
@@ -1923,16 +1941,29 @@ def get_admin_insights():
         presence_rows = c.fetchall()
         active_users_now = 0
         for row in presence_rows:
+            row = _row_to_dict(row)
             last_seen = row.get('last_seen') if hasattr(row, 'keys') else row[1]
             dt = _parse_dt(last_seen)
             if dt and dt >= active_cutoff:
                 active_users_now += 1
+
+        if active_users_now == 0:
+            try:
+                if db_type == 'postgres':
+                    c.execute("SELECT COUNT(DISTINCT user_id) FROM daily_actions WHERE timestamp >= %s", (active_cutoff.isoformat(),))
+                else:
+                    c.execute("SELECT COUNT(DISTINCT user_id) FROM daily_actions WHERE timestamp >= ?", (active_cutoff.isoformat(),))
+                active_row = c.fetchone()
+                active_users_now = int(_row_first_value(active_row, 0) or 0)
+            except Exception:
+                pass
 
         # Recent signups.
         c.execute("SELECT id, name, email, role, created_at FROM users ORDER BY created_at DESC LIMIT 8")
         signup_rows = c.fetchall()
         recent_signups = []
         for row in signup_rows:
+            row = _row_to_dict(row)
             if hasattr(row, 'keys'):
                 recent_signups.append({
                     "id": row.get('id'),
@@ -1966,6 +1997,7 @@ def get_admin_insights():
         dau_rows = c.fetchall()
         dau_series = []
         for row in reversed(dau_rows):
+            row = _row_to_dict(row)
             if hasattr(row, 'keys'):
                 dau_series.append({"date": row.get('event_date'), "count": int(row.get('cnt') or 0)})
             else:
@@ -1976,6 +2008,7 @@ def get_admin_insights():
         created_rows = c.fetchall()
         growth_counter = defaultdict(int)
         for row in created_rows:
+            row = _row_to_dict(row)
             val = row.get('created_at') if hasattr(row, 'keys') else row[0]
             dt = _parse_dt(val)
             if dt:
@@ -1992,6 +2025,7 @@ def get_admin_insights():
         active_7d = set()
         active_30d = set()
         for row in action_rows:
+            row = _row_to_dict(row)
             uid = row.get('user_id') if hasattr(row, 'keys') else row[0]
             ts = row.get('timestamp') if hasattr(row, 'keys') else row[1]
             dt = _parse_dt(ts)
@@ -2008,6 +2042,7 @@ def get_admin_insights():
         base_users_for_7d = 0
         base_users_for_30d = 0
         for row in all_user_rows:
+            row = _row_to_dict(row)
             created_at = row.get('created_at') if hasattr(row, 'keys') else row[1]
             dt = _parse_dt(created_at)
             if dt and dt <= retention_1d_cutoff:
@@ -2047,6 +2082,7 @@ def get_admin_insights():
         top_rows = c.fetchall()
         top_active_users = []
         for row in top_rows:
+            row = _row_to_dict(row)
             if hasattr(row, 'keys'):
                 top_active_users.append({
                     "user_id": row.get('user_id'),
@@ -2073,6 +2109,7 @@ def get_admin_insights():
         feature_rows = c.fetchall()
         most_used_features = []
         for row in feature_rows:
+            row = _row_to_dict(row)
             if hasattr(row, 'keys'):
                 most_used_features.append({"feature": row.get('action') or "unknown", "count": int(row.get('cnt') or 0)})
             else:
@@ -2099,6 +2136,7 @@ def get_admin_insights():
         maint_row = c.fetchone()
         maintenance_mode = False
         if maint_row:
+            maint_row = _row_to_dict(maint_row)
             maint_val = maint_row.get('value') if hasattr(maint_row, 'keys') else maint_row[0]
             maintenance_mode = str(maint_val).strip().lower() in ('1', 'true', 'yes', 'on')
 
@@ -2148,6 +2186,7 @@ def list_announcements():
         conn.close()
         out = []
         for row in rows:
+            row = _row_to_dict(row)
             if hasattr(row, 'keys'):
                 out.append({k: row.get(k) for k in ['id', 'title', 'message', 'is_global', 'target_user_id', 'scheduled_for', 'status', 'created_by', 'created_at', 'sent_at']})
             else:
@@ -2199,7 +2238,7 @@ def create_announcement():
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (title, message, is_global, target_user_id, scheduled_for, status, admin_role, now_iso))
-            row = c.fetchone()
+            row = _row_to_dict(c.fetchone())
             announcement_id = row.get('id') if hasattr(row, 'keys') else row[0]
         else:
             c.execute("""
@@ -2222,7 +2261,7 @@ def create_announcement():
                     FROM admin_announcements
                     WHERE id = ?
                 """, (announcement_id,))
-            ann_row = c.fetchone()
+            ann_row = _row_to_dict(c.fetchone())
             dispatched = _dispatch_announcement_row(c, db_type, ann_row)
 
         log_action(
@@ -2351,6 +2390,7 @@ def send_push_notification():
         users = c.fetchall()
         sent = 0
         for row in users:
+            row = _row_to_dict(row)
             uid = row.get('id') if hasattr(row, 'keys') else row[0]
             if db_type == 'postgres':
                 c.execute("""
@@ -2414,6 +2454,7 @@ def admin_chat():
         conn.close()
         out = []
         for row in reversed(rows):
+            row = _row_to_dict(row)
             if hasattr(row, 'keys'):
                 out.append({
                     "id": row.get('id'),
@@ -2473,6 +2514,7 @@ def get_system_settings():
         rows = c.fetchall()
         stored = {}
         for row in rows:
+            row = _row_to_dict(row)
             if hasattr(row, 'keys'):
                 stored[str(row.get('key'))] = str(row.get('value'))
             else:

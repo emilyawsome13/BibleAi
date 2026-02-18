@@ -207,6 +207,18 @@
             text-shadow: 0 0 12px rgba(255,255,255,0.12);
             animation: particleFloat 22s infinite linear;
         }
+        .particle.cross {
+            width: auto;
+            height: auto;
+            background: none;
+            border-radius: 0;
+            color: rgba(255,255,255,0.4);
+            font-size: 16px;
+            font-weight: 700;
+            text-shadow: 0 0 18px rgba(255,255,255,0.18);
+            animation: particleFloat 24s infinite linear;
+            mix-blend-mode: screen;
+        }
         @keyframes particleFloat {
             0% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
             5% { opacity: 0.4; }
@@ -4073,8 +4085,8 @@
 
             <div class="setting-item">
                 <div>
-                    <div class="setting-label">Particle Effects</div>
-                    <div class="setting-desc">Floating particles in background</div>
+                    <div class="setting-label">Cross Particles</div>
+                    <div class="setting-desc">Floating Jesus crosses in the background</div>
                 </div>
                 <div class="toggle" id="particlesToggle" onclick="toggleParticles()">
                     <div class="toggle-thumb"></div>
@@ -7494,7 +7506,7 @@ function loadAchievements(stats) {
             
             AudioSys.playClick();
             saveSettings();
-            showToast(settings.particles ? 'Particles ON ✨' : 'Particles OFF');
+            showToast(settings.particles ? 'Crosses ON ✝️' : 'Crosses OFF');
         }
         
         function toggleHighContrast() {
@@ -7782,26 +7794,27 @@ function loadAchievements(stats) {
             if (!container) return;
             
             container.innerHTML = '';
-            for (let i = 0; i < 32; i++) {
+            for (let i = 0; i < 18; i++) {
                 const p = document.createElement('div');
                 p.className = 'particle';
                 p.style.left = Math.random() * 100 + '%';
-                p.style.animationDuration = (9 + Math.random() * 16) + 's';
-                p.style.animationDelay = Math.random() * 15 + 's';
-                p.style.opacity = 0.28 + Math.random() * 0.38;
+                p.style.animationDuration = (10 + Math.random() * 18) + 's';
+                p.style.animationDelay = Math.random() * 16 + 's';
+                p.style.opacity = 0.18 + Math.random() * 0.25;
                 container.appendChild(p);
             }
 
-            const symbols = ['✝', '✚', '✟', '✞', '✠', '✦', '✧'];
-            for (let i = 0; i < 12; i++) {
+            const crosses = ['✝', '✟', '✞', '✚', '✠'];
+            for (let i = 0; i < 20; i++) {
                 const s = document.createElement('div');
-                s.className = 'particle symbol';
-                s.textContent = symbols[Math.floor(Math.random() * symbols.length)];
+                s.className = 'particle cross';
+                s.textContent = crosses[Math.floor(Math.random() * crosses.length)];
                 s.style.left = Math.random() * 100 + '%';
-                s.style.animationDuration = (14 + Math.random() * 18) + 's';
+                s.style.animationDuration = (16 + Math.random() * 20) + 's';
                 s.style.animationDelay = Math.random() * 18 + 's';
-                s.style.opacity = 0.18 + Math.random() * 0.35;
-                s.style.fontSize = (10 + Math.random() * 10) + 'px';
+                s.style.opacity = 0.22 + Math.random() * 0.35;
+                s.style.fontSize = (12 + Math.random() * 12) + 'px';
+                s.style.transform = `translateY(100vh) rotate(${Math.random() * 60 - 30}deg)`;
                 container.appendChild(s);
             }
         }

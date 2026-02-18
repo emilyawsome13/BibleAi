@@ -2239,6 +2239,27 @@
             opacity: 0;
             transition: opacity 0.2s;
         }
+        .achievement-tooltip .achievement-progress {
+            margin-top: 6px;
+            width: 120px;
+            height: 4px;
+            background: rgba(255,255,255,0.15);
+            border-radius: 999px;
+            overflow: hidden;
+        }
+        .achievement-tooltip .achievement-progress-fill {
+            height: 100%;
+            width: 0%;
+            background: var(--primary);
+            box-shadow: 0 0 10px var(--primary-glow);
+            transition: width 220ms ease;
+        }
+        .achievement-tooltip .achievement-progress-label {
+            margin-top: 4px;
+            font-size: 10px;
+            opacity: 0.75;
+            text-align: right;
+        }
         .achievement-tooltip.visible {
             opacity: 1;
         }
@@ -2313,7 +2334,7 @@
             overflow: hidden;
         }
         .daily-challenge::before {
-            content: '🎯';
+            content: 'ðŸŽ¯';
             position: absolute;
             top: -10px;
             right: -10px;
@@ -3039,7 +3060,7 @@
             <div id="discover" class="tab-view active desktop-active">
                 <!-- Daily Challenge -->
                 <div class="daily-challenge" id="dailyChallenge" style="display: none;">
-                    <div class="challenge-title">🎯 Daily Challenge</div>
+                    <div class="challenge-title">ðŸŽ¯ Daily Challenge</div>
                     <div class="challenge-text" id="challengeText">Save 2 verses to your library</div>
                     <div class="challenge-progress" id="challengeProgressBar">
                         <div class="challenge-fill" id="challengeFill" style="width: 0%"></div>
@@ -3054,7 +3075,7 @@
 
                 <div class="glass-card bible-picks-card">
                     <div class="bible-picks-header">
-                        <div class="bible-picks-title">📖 Popular Bible Selections</div>
+                        <div class="bible-picks-title">ðŸ“– Popular Bible Selections</div>
                         <div class="bible-picks-controls">
                             <button class="bible-picks-btn secondary" type="button" onclick="loadBiblePicks(true)">Refresh</button>
                         </div>
@@ -3067,8 +3088,8 @@
                     </div>
                     <div class="bible-reader-card">
                         <div class="bible-reader-header">
-                            <div class="bible-reader-title">📘 Ebook Reader</div>
-                            <div class="bible-reader-current" id="readerCurrentChapter">Chapter: —</div>
+                            <div class="bible-reader-title">ðŸ“˜ Ebook Reader</div>
+                            <div class="bible-reader-current" id="readerCurrentChapter">Chapter: â€”</div>
                         </div>
                         <div class="bible-reader-controls">
                             <select class="bible-reader-select" id="readerBookSelect"></select>
@@ -3090,11 +3111,11 @@
 
                 <!-- Quick Filters -->
                 <div class="quick-filters">
-                    <div class="filter-chip active" onclick="filterDiscover('all')">✨ All</div>
-                    <div class="filter-chip" onclick="filterDiscover('liked')">❤️ Liked</div>
-                    <div class="filter-chip" onclick="filterDiscover('saved')">🔖 Saved</div>
-                    <div class="filter-chip" onclick="filterDiscover('popular')">🔥 Popular</div>
-                    <div class="filter-chip" onclick="filterDiscover('recent')">🕐 Recent</div>
+                    <div class="filter-chip active" onclick="filterDiscover('all')">âœ¨ All</div>
+                    <div class="filter-chip" onclick="filterDiscover('liked')">â¤ï¸ Liked</div>
+                    <div class="filter-chip" onclick="filterDiscover('saved')">ðŸ”– Saved</div>
+                    <div class="filter-chip" onclick="filterDiscover('popular')">ðŸ”¥ Popular</div>
+                    <div class="filter-chip" onclick="filterDiscover('recent')">ðŸ• Recent</div>
                 </div>
 
                 <div class="glass-card verse-container" onclick="toggleFullscreen()">
@@ -3146,7 +3167,7 @@
                 <!-- Verse of the Day -->
                 <div class="glass-card" id="verseOfDayCard" style="margin-top: 16px;">
                     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
-                        <div style="font-size: 14px; font-weight: 700; color: var(--primary);">📖 Verse of the Day</div>
+                        <div style="font-size: 14px; font-weight: 700; color: var(--primary);">ðŸ“– Verse of the Day</div>
                         <div style="font-size: 12px; opacity: 0.6;" id="vodDate">Today</div>
                     </div>
                     <div id="verseOfDayContent" style="font-style: italic; opacity: 0.9;">Loading...</div>
@@ -3159,23 +3180,23 @@
             <div id="recommendations" class="tab-view">
                 <!-- Smart Categories -->
                 <div class="rec-categories">
-                    <div class="rec-category active" onclick="filterRecs('all')">🎯 All</div>
-                    <div class="rec-category" onclick="filterRecs('favorites')">⭐ Favorites</div>
-                    <div class="rec-category" onclick="filterRecs('trending')">📈 Trending</div>
-                    <div class="rec-category" onclick="filterRecs('similar')">🔍 Similar</div>
-                    <div class="rec-category" onclick="filterRecs('random')">🎲 Surprise</div>
+                    <div class="rec-category active" onclick="filterRecs('all')">ðŸŽ¯ All</div>
+                    <div class="rec-category" onclick="filterRecs('favorites')">â­ Favorites</div>
+                    <div class="rec-category" onclick="filterRecs('trending')">ðŸ“ˆ Trending</div>
+                    <div class="rec-category" onclick="filterRecs('similar')">ðŸ” Similar</div>
+                    <div class="rec-category" onclick="filterRecs('random')">ðŸŽ² Surprise</div>
                 </div>
 
                 <!-- Mood Selector -->
                 <div class="glass-card" style="margin-bottom: 16px;">
-                    <div style="font-size: 14px; font-weight: 700; margin-bottom: 12px;">💭 How are you feeling?</div>
+                    <div style="font-size: 14px; font-weight: 700; margin-bottom: 12px;">ðŸ’­ How are you feeling?</div>
                     <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-                        <button class="filter-chip" onclick="getMoodVerse('peace')">😌 Peaceful</button>
-                        <button class="filter-chip" onclick="getMoodVerse('strength')">💪 Need Strength</button>
-                        <button class="filter-chip" onclick="getMoodVerse('hope')">🌟 Hopeful</button>
-                        <button class="filter-chip" onclick="getMoodVerse('love')">❤️ Loved</button>
-                        <button class="filter-chip" onclick="getMoodVerse('gratitude')">🙏 Grateful</button>
-                        <button class="filter-chip" onclick="getMoodVerse('guidance')">🧭 Need Guidance</button>
+                        <button class="filter-chip" onclick="getMoodVerse('peace')">ðŸ˜Œ Peaceful</button>
+                        <button class="filter-chip" onclick="getMoodVerse('strength')">ðŸ’ª Need Strength</button>
+                        <button class="filter-chip" onclick="getMoodVerse('hope')">ðŸŒŸ Hopeful</button>
+                        <button class="filter-chip" onclick="getMoodVerse('love')">â¤ï¸ Loved</button>
+                        <button class="filter-chip" onclick="getMoodVerse('gratitude')">ðŸ™ Grateful</button>
+                        <button class="filter-chip" onclick="getMoodVerse('guidance')">ðŸ§­ Need Guidance</button>
                     </div>
                 </div>
 
@@ -3191,7 +3212,7 @@
                 <!-- Recommendation History -->
                 <div class="rec-history">
                     <div class="rec-history-title">
-                        📜 Your Journey
+                        ðŸ“œ Your Journey
                         <span style="font-size: 12px; opacity: 0.6; font-weight: 400;">Recent recommendations</span>
                     </div>
                     <div id="recHistoryList"></div>
@@ -3202,33 +3223,33 @@
             <div id="library" class="tab-view">
                 <!-- Library Tabs -->
                 <div class="library-tabs">
-                    <button class="library-tab active" onclick="switchLibraryTab('all')">📚 All</button>
-                    <button class="library-tab" onclick="switchLibraryTab('collections')">📁 Collections</button>
-                    <button class="library-tab" onclick="switchLibraryTab('favorites')">⭐ Favorites</button>
+                    <button class="library-tab active" onclick="switchLibraryTab('all')">ðŸ“š All</button>
+                    <button class="library-tab" onclick="switchLibraryTab('collections')">ðŸ“ Collections</button>
+                    <button class="library-tab" onclick="switchLibraryTab('favorites')">â­ Favorites</button>
                 </div>
 
                 <!-- Search & Filter -->
-                <input type="text" class="library-search" id="librarySearch" placeholder="🔍 Search your verses..." onkeyup="searchLibrary()">
+                <input type="text" class="library-search" id="librarySearch" placeholder="ðŸ” Search your verses..." onkeyup="searchLibrary()">
 
                 <!-- Collections View -->
                 <div id="collectionsView" style="display: none;">
                     <div class="collection-card" onclick="showCollection('favorites')">
-                        <div class="collection-icon">⭐</div>
+                        <div class="collection-icon">â­</div>
                         <div class="collection-name">Favorites</div>
                         <div class="collection-count" id="favoritesCount">0 verses</div>
                     </div>
                     <div class="collection-card" onclick="showCollection('liked')">
-                        <div class="collection-icon">❤️</div>
+                        <div class="collection-icon">â¤ï¸</div>
                         <div class="collection-name">Liked Verses</div>
                         <div class="collection-count" id="likedCount">0 verses</div>
                     </div>
                     <div class="collection-card" onclick="showCollection('saved')">
-                        <div class="collection-icon">🔖</div>
+                        <div class="collection-icon">ðŸ”–</div>
                         <div class="collection-name">Saved</div>
                         <div class="collection-count" id="savedCount">0 verses</div>
                     </div>
                     <div class="collection-card" onclick="createNewCollection()">
-                        <div class="collection-icon">➕</div>
+                        <div class="collection-icon">âž•</div>
                         <div class="collection-name">Create Collection</div>
                         <div class="collection-count">New folder</div>
                     </div>
@@ -3248,10 +3269,10 @@
                 <!-- Sort Options -->
                 <div style="display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;">
                     <select class="library-search" style="flex: 1; min-width: 120px;" id="sortSelect" onchange="sortLibrary()">
-                        <option value="newest">🕐 Newest First</option>
-                        <option value="oldest">📅 Oldest First</option>
-                        <option value="az">🔤 A-Z (Reference)</option>
-                        <option value="book">📖 By Book</option>
+                        <option value="newest">ðŸ• Newest First</option>
+                        <option value="oldest">ðŸ“… Oldest First</option>
+                        <option value="az">ðŸ”¤ A-Z (Reference)</option>
+                        <option value="book">ðŸ“– By Book</option>
                     </select>
                 </div>
 
@@ -3297,14 +3318,14 @@
                         
                         <!-- Emoji Picker -->
                         <div class="emoji-picker">
-                            <button class="emoji-btn" onclick="addEmoji('❤️')">❤️</button>
-                            <button class="emoji-btn" onclick="addEmoji('🙏')">🙏</button>
-                            <button class="emoji-btn" onclick="addEmoji('✝️')">✝️</button>
-                            <button class="emoji-btn" onclick="addEmoji('🕊️')">🕊️</button>
-                            <button class="emoji-btn" onclick="addEmoji('💪')">💪</button>
-                            <button class="emoji-btn" onclick="addEmoji('🌟')">🌟</button>
-                            <button class="emoji-btn" onclick="addEmoji('🔥')">🔥</button>
-                            <button class="emoji-btn" onclick="addEmoji('😊')">😊</button>
+                            <button class="emoji-btn" onclick="addEmoji('â¤ï¸')">â¤ï¸</button>
+                            <button class="emoji-btn" onclick="addEmoji('ðŸ™')">ðŸ™</button>
+                            <button class="emoji-btn" onclick="addEmoji('âœï¸')">âœï¸</button>
+                            <button class="emoji-btn" onclick="addEmoji('ðŸ•Šï¸')">ðŸ•Šï¸</button>
+                            <button class="emoji-btn" onclick="addEmoji('ðŸ’ª')">ðŸ’ª</button>
+                            <button class="emoji-btn" onclick="addEmoji('ðŸŒŸ')">ðŸŒŸ</button>
+                            <button class="emoji-btn" onclick="addEmoji('ðŸ”¥')">ðŸ”¥</button>
+                            <button class="emoji-btn" onclick="addEmoji('ðŸ˜Š')">ðŸ˜Š</button>
                         </div>
 
                         <div class="comment-input-area">
@@ -3321,7 +3342,7 @@
                             <span>&#127757;</span>
                             <span>Community Chat</span>
                             <span class="community-badge">Life & Support</span>
-                            <span class="trending-tag" id="trendingBadge" style="display: none;">🔥 Trending</span>
+                            <span class="trending-tag" id="trendingBadge" style="display: none;">ðŸ”¥ Trending</span>
                         </div>
                         
                         <!-- Topic Tags -->
@@ -3395,7 +3416,7 @@
                 <!-- 1. READING STREAK -->
                 <div class="glass-card" style="margin: 20px 0; padding: 24px;">
                     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
-                        <div style="font-size: 18px; font-weight: 700;">🔥 Reading Streak</div>
+                        <div style="font-size: 18px; font-weight: 700;">ðŸ”¥ Reading Streak</div>
                         <div id="streakBadge" style="background: linear-gradient(135deg, #ff6b35, #f7931e); padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 700;">0 DAYS</div>
                     </div>
                     <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;" id="streakCalendar">
@@ -3408,7 +3429,7 @@
 
                 <!-- 2. ACHIEVEMENT BADGES -->
                 <div class="glass-card" style="margin: 20px 0; padding: 24px;">
-                    <div style="font-size: 18px; font-weight: 700; margin-bottom: 16px;">🏆 Achievements</div>
+                    <div style="font-size: 18px; font-weight: 700; margin-bottom: 16px;">ðŸ† Achievements</div>
                     <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 12px;" id="achievementGrid">
                         <!-- Generated by JS -->
                     </div>
@@ -3416,7 +3437,7 @@
 
                 <!-- 3. FAVORITE BOOKS CHART -->
                 <div class="glass-card" style="margin: 20px 0; padding: 24px;">
-                    <div style="font-size: 18px; font-weight: 700; margin-bottom: 16px;">📚 Favorite Books</div>
+                    <div style="font-size: 18px; font-weight: 700; margin-bottom: 16px;">ðŸ“š Favorite Books</div>
                     <div id="favoriteBooksChart" style="display: flex; flex-direction: column; gap: 10px;">
                         <!-- Generated by JS -->
                     </div>
@@ -3424,7 +3445,7 @@
 
                 <!-- 4. TODAY'S VERSE HISTORY -->
                 <div class="glass-card" style="margin: 20px 0; padding: 24px;">
-                    <div style="font-size: 18px; font-weight: 700; margin-bottom: 16px;">✨ Today's Verses</div>
+                    <div style="font-size: 18px; font-weight: 700; margin-bottom: 16px;">âœ¨ Today's Verses</div>
                     <div id="verseHistory" style="max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;">
                         <!-- Generated by JS -->
                     </div>
@@ -3446,7 +3467,7 @@
                                 <div class="about-progress-item"><div class="about-progress-fill" id="aboutProgressFill0"></div></div>
                                 <div class="about-progress-item"><div class="about-progress-fill" id="aboutProgressFill1"></div></div>
                             </div>
-                            <div class="about-now-playing" id="aboutNowPlaying">Slide 1/2 � Playing � Vol 100%</div>
+                            <div class="about-now-playing" id="aboutNowPlaying">Slide 1/2 ï¿½ Playing ï¿½ Vol 100%</div>
                             <div class="about-volume-wrap" onclick="event.stopPropagation()">
                                 <input id="aboutVolumeSlider" class="about-volume-slider" type="range" min="0" max="1" step="0.01" value="1" aria-label="Video volume" oninput="setAboutVolume(this.value)" onchange="setAboutVolume(this.value)">
                             </div>
@@ -3581,8 +3602,8 @@
     <div class="reader-fullscreen" id="readerFullscreen" onclick="closeReaderFullscreen(event)">
         <div class="reader-fullscreen-inner">
             <div class="reader-fullscreen-header">
-                <div class="bible-reader-title">📘 Ebook Reader</div>
-                <div class="bible-reader-current" id="readerFullscreenChapter">Chapter: —</div>
+                <div class="bible-reader-title">ðŸ“˜ Ebook Reader</div>
+                <div class="bible-reader-current" id="readerFullscreenChapter">Chapter: â€”</div>
                 <button class="bible-reader-btn secondary" type="button" onclick="toggleReaderFullscreen()">Close</button>
             </div>
             <div class="bible-reader-pagination">
@@ -3687,7 +3708,7 @@
 
             <!-- Extra Settings -->
             <div style="margin: 20px 0 10px; padding-top: 15px; border-top: 1px solid var(--glass-border);">
-                <div style="font-size: 12px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 15px;">✨ Extra Features</div>
+                <div style="font-size: 12px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 15px;">âœ¨ Extra Features</div>
             </div>
 
             <div class="setting-item">
@@ -3742,7 +3763,7 @@
 
             <!-- Text to Speech Settings -->
             <div style="margin: 20px 0 10px; padding-top: 15px; border-top: 1px solid var(--glass-border);">
-                <div style="font-size: 12px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 15px;">🔊 Text to Speech</div>
+                <div style="font-size: 12px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 15px;">ðŸ”Š Text to Speech</div>
             </div>
 
             <div class="setting-item">
@@ -3774,7 +3795,7 @@
                     <div class="setting-label">Test Speech</div>
                     <div class="setting-desc">Click to test TTS</div>
                 </div>
-                <button class="btn btn-primary" onclick="testTTS()" style="padding: 8px 16px; font-size: 13px;">🔊 Test</button>
+                <button class="btn btn-primary" onclick="testTTS()" style="padding: 8px 16px; font-size: 13px;">ðŸ”Š Test</button>
             </div>
 
             <!-- Admin Only Setting -->
@@ -3795,14 +3816,14 @@
             <!-- Admin Dashboard Link -->
             <div class="setting-item admin-only" id="adminDashboardLink">
                 <div>
-                    <div class="setting-label" style="color: var(--primary);">📊 Admin Dashboard</div>
+                    <div class="setting-label" style="color: var(--primary);">ðŸ“Š Admin Dashboard</div>
                     <div class="setting-desc">Manage users, view stats, and more</div>
                 </div>
                 <a href="/admin/dashboard" class="btn btn-primary" style="text-decoration: none; padding: 8px 16px; font-size: 13px;">Open</a>
             </div>
 
             <button class="admin-panel-btn" id="adminPanelBtn" onclick="openAdminUnlock()">
-                🔐 Staff Access
+                ðŸ” Staff Access
             </button>
         </div>
     </div>
@@ -3811,7 +3832,7 @@
     <div class="modal admin-unlock-modal" id="adminUnlockModal" onclick="closeAdminUnlock(event)">
         <div class="modal-content" onclick="event.stopPropagation()">
             <div class="modal-header">
-                <div class="modal-title">🔐 Staff Access</div>
+                <div class="modal-title">ðŸ” Staff Access</div>
                 <button class="close-btn" onclick="closeAdminUnlock()">&#10005;</button>
             </div>
             
@@ -3820,19 +3841,19 @@
             <!-- Role Selection -->
             <div class="role-selector">
                 <div class="role-btn" data-role="host" onclick="selectRole('host')">
-                    <span class="role-icon">🎤</span>
+                    <span class="role-icon">ðŸŽ¤</span>
                     <span class="role-name">Host</span>
                 </div>
                 <div class="role-btn" data-role="mod" onclick="selectRole('mod')">
-                    <span class="role-icon">🛡️</span>
+                    <span class="role-icon">ðŸ›¡ï¸</span>
                     <span class="role-name">Mod</span>
                 </div>
                 <div class="role-btn" data-role="co_owner" onclick="selectRole('co_owner')">
-                    <span class="role-icon">👑</span>
+                    <span class="role-icon">ðŸ‘‘</span>
                     <span class="role-name">Co-Owner</span>
                 </div>
                 <div class="role-btn" data-role="owner" onclick="selectRole('owner')">
-                    <span class="role-icon">⚡</span>
+                    <span class="role-icon">âš¡</span>
                     <span class="role-name">Owner</span>
                 </div>
             </div>
@@ -4305,7 +4326,7 @@
                     localStorage.setItem('bibleAppRole', data.role);
                     updateAdminUI();
                     closeAdminUnlock();
-                    showToast(`Role unlocked: ${data.role_display}! 🔐`, 3000);
+                    showToast(`Role unlocked: ${data.role_display}! ðŸ”`, 3000);
                     console.log('Role assigned:', data.role, data.role_display);
                 } else {
                     showToast(data.error || 'Invalid code for selected role.', 'error', 5000);
@@ -4434,7 +4455,7 @@
                     document.getElementById('verseText').textContent = data.verse.text;
                     document.getElementById('verseRef').textContent = data.verse.ref;
                     document.getElementById('verseSource').textContent = data.verse.source;
-                    document.getElementById('fullscreenText').textContent = `"${data.verse.text}"\n\n— ${data.verse.ref}`;
+                    document.getElementById('fullscreenText').textContent = `"${data.verse.text}"\n\nâ€” ${data.verse.ref}`;
                     document.getElementById('commentVerseRef').textContent = data.verse.ref;
                     
                     syncCountdown(data.countdown, data.interval);
@@ -4445,7 +4466,7 @@
                         speakVerse(data.verse.text, data.verse.ref);
 
                         if (settings.autoCopyVerse && navigator.clipboard) {
-                            const verseLine = `"${data.verse.text}" — ${data.verse.ref}`;
+                            const verseLine = `"${data.verse.text}" â€” ${data.verse.ref}`;
                             navigator.clipboard.writeText(verseLine).catch(() => {});
                         }
                         
@@ -4521,7 +4542,7 @@
             });
             const data = await res.json();
             updateLikeUI(data.liked);
-            animateActionFeedback('likeIcon', data.liked ? '❤️' : '');
+            animateActionFeedback('likeIcon', data.liked ? 'â¤ï¸' : '');
             if (settings.notifications) showToast(data.liked ? 'Added to likes' : 'Removed from likes');
             
             if (data.recommendation && settings.autoRec) {
@@ -4542,7 +4563,7 @@
             });
             const data = await res.json();
             updateSaveUI(data.saved);
-            animateActionFeedback('saveIcon', data.saved ? '🔖' : '');
+            animateActionFeedback('saveIcon', data.saved ? 'ðŸ”–' : '');
             
             // Track daily challenge
             if (data.saved) trackDailyAction('save');
@@ -4553,14 +4574,14 @@
         // Copy & Share
         async function copyVerse() {
             if (!currentVerse) return;
-            const text = `"${currentVerse.text}" — ${currentVerse.ref}`;
+            const text = `"${currentVerse.text}" â€” ${currentVerse.ref}`;
             await navigator.clipboard.writeText(text);
             if (settings.notifications) showToast('Copied to clipboard!');
         }
 
         async function shareVerse() {
             if (!currentVerse) return;
-            const text = `"${currentVerse.text}" — ${currentVerse.ref}`;
+            const text = `"${currentVerse.text}" â€” ${currentVerse.ref}`;
             
             try {
                 if (navigator.share) {
@@ -4582,7 +4603,7 @@
             const v = verse || currentVerse;
             
             if (v) {
-                document.getElementById('fullscreenText').textContent = `"${v.text}"\n\n— ${v.ref}`;
+                document.getElementById('fullscreenText').textContent = `"${v.text}"\n\nâ€” ${v.ref}`;
                 updateFullscreenButtons(v.id);
                 fs.classList.add('active');
             }
@@ -5052,9 +5073,9 @@
                     </div>
                     <div class="comment-text">${escapeHtml(c.text)}</div>
                     <div class="reaction-bar">
-                        <button class="reaction-btn" onclick="addReaction(${c.id}, '${type}', 'heart', this)">❤️ ${reactions['heart'] || 0}</button>
-                        <button class="reaction-btn" onclick="addReaction(${c.id}, '${type}', 'pray', this)">🙏 ${reactions['pray'] || 0}</button>
-                        <button class="reaction-btn" onclick="addReaction(${c.id}, '${type}', 'cross', this)">✝️ ${reactions['cross'] || 0}</button>
+                        <button class="reaction-btn" onclick="addReaction(${c.id}, '${type}', 'heart', this)">â¤ï¸ ${reactions['heart'] || 0}</button>
+                        <button class="reaction-btn" onclick="addReaction(${c.id}, '${type}', 'pray', this)">ðŸ™ ${reactions['pray'] || 0}</button>
+                        <button class="reaction-btn" onclick="addReaction(${c.id}, '${type}', 'cross', this)">âœï¸ ${reactions['cross'] || 0}</button>
                         <button class="reply-btn" onclick="showReplyBox(${c.id}, '${type}')">Reply (${c.reply_count || replies.length || 0})</button>
                     </div>
                     <div class="comment-replies" id="replies-${type}-${c.id}">${renderReplies(replies)}</div>
@@ -5099,8 +5120,14 @@
                 const res = await fetch(endpoint, {method: 'DELETE'});
                 
                 if (res.ok) {
-                    document.getElementById(`${type}-${id}`).remove();
+                    const row = document.getElementById(`${type}-${id}`);
+                    if (row) row.remove();
                     showToast('Deleted successfully');
+                    if (type === 'community') {
+                        loadCommunityMessages();
+                    } else {
+                        loadComments();
+                    }
                     loadProfileStats();
                 }
             } catch (e) {
@@ -5115,6 +5142,23 @@
         }
 
         // Profile Stats
+        function parseCreatedAt(value) {
+            if (!value) return null;
+            if (typeof value === 'number') {
+                const ms = value > 1e12 ? value : value * 1000;
+                const d = new Date(ms);
+                return Number.isNaN(d.getTime()) ? null : d;
+            }
+            const str = String(value).trim();
+            if (!str) return null;
+            let d = new Date(str);
+            if (Number.isNaN(d.getTime())) {
+                d = new Date(str.replace(' ', 'T'));
+            }
+            if (Number.isNaN(d.getTime())) return null;
+            return d;
+        }
+
         async function loadProfileStats() {
             const res = await fetch('/api/stats');
             const data = await res.json();
@@ -5129,9 +5173,10 @@
             const userRes = await fetch('/api/user_info');
             const userData = await userRes.json();
             
-            if (userData.created_at) {
-                const date = new Date(userData.created_at);
-                document.getElementById('memberSince').textContent = date.toLocaleDateString();
+            const memberEl = document.getElementById('memberSince');
+            if (memberEl) {
+                const date = parseCreatedAt(userData.created_at);
+                memberEl.textContent = date ? date.toLocaleDateString() : '—';
             }
             
             // Load new profile features
@@ -5171,17 +5216,17 @@
             document.getElementById('streakBadge').textContent = streak + (streak === 1 ? ' DAY' : ' DAYS');
             
             const messages = [
-                "Start your streak today! 🔥",
-                "Keep it going! You're on fire! 🔥",
-                "3 days! Building a habit! 💪",
-                "4 days! Consistency is key! 🗝️",
-                "5 days! Halfway to a week! ⭐",
-                "6 days! Almost there! 🚀",
-                "1 WEEK! Incredible dedication! 🏆",
-                "Over a week! You're unstoppable! 💯"
+                "Start your streak today! ðŸ”¥",
+                "Keep it going! You're on fire! ðŸ”¥",
+                "3 days! Building a habit! ðŸ’ª",
+                "4 days! Consistency is key! ðŸ—ï¸",
+                "5 days! Halfway to a week! â­",
+                "6 days! Almost there! ðŸš€",
+                "1 WEEK! Incredible dedication! ðŸ†",
+                "Over a week! You're unstoppable! ðŸ’¯"
             ];
             document.getElementById('streakMessage').textContent = 
-                messages[Math.min(streak - 1, messages.length - 1)] || `${streak} days! Amazing discipline! 🙏`;
+                messages[Math.min(streak - 1, messages.length - 1)] || `${streak} days! Amazing discipline! ðŸ™`;
             
             // Generate calendar (last 14 days)
             const calendar = document.getElementById('streakCalendar');
@@ -5209,60 +5254,71 @@
         }
 
         // 2. ACHIEVEMENT BADGES
-        const ACHIEVEMENTS = [
-            // Like Achievements
-            { id: 'first_like', icon: '❤️', name: 'First Love', desc: 'Like your first verse', check: (d) => d.liked >= 1 },
-            { id: 'liker_50', icon: '💖', name: 'Appreciator', desc: 'Like 50 verses', check: (d) => d.liked >= 50 },
-            { id: 'liker_200', icon: '💗', name: 'Enthusiast', desc: 'Like 200 verses', check: (d) => d.liked >= 200 },
-            { id: 'liker_500', icon: '💝', name: 'Devoted', desc: 'Like 500 verses', check: (d) => d.liked >= 500 },
-            
-            // Save Achievements
-            { id: 'collector', icon: '📚', name: 'Collector', desc: 'Save 10 verses', check: (d) => d.saved >= 10 },
-            { id: 'librarian', icon: '🏛️', name: 'Librarian', desc: 'Save 50 verses', check: (d) => d.saved >= 50 },
-            { id: 'archivist', icon: '📜', name: 'Archivist', desc: 'Save 150 verses', check: (d) => d.saved >= 150 },
-            { id: 'curator', icon: '🏺', name: 'Curator', desc: 'Save 300 verses', check: (d) => d.saved >= 300 },
-            
-            // Comment Achievements
-            { id: 'first_comment', icon: '💬', name: 'Voice', desc: 'Post a comment', check: (d) => d.comments >= 1 },
-            { id: 'conversationalist', icon: '🗣️', name: 'Chatty', desc: 'Post 25 comments', check: (d) => d.comments >= 25 },
-            { id: 'storyteller', icon: '📖', name: 'Storyteller', desc: 'Post 75 comments', check: (d) => d.comments >= 75 },
-            { id: 'oracle', icon: '🔮', name: 'Oracle', desc: 'Post 150 comments', check: (d) => d.comments >= 150 },
-            
-            // View/Explorer Achievements
-            { id: 'explorer', icon: '🔍', name: 'Explorer', desc: 'View 100 verses', check: (d) => d.total_verses >= 100 },
-            { id: 'scholar', icon: '🎓', name: 'Scholar', desc: 'View 500 verses', check: (d) => d.total_verses >= 500 },
-            { id: 'sage', icon: '📿', name: 'Sage', desc: 'View 1000 verses', check: (d) => d.total_verses >= 1000 },
-            { id: 'master', icon: '👑', name: 'Master', desc: 'View 2500 verses', check: (d) => d.total_verses >= 2500 },
-            
-            // Streak Achievements
-            { id: 'three_day_streak', icon: '🔥', name: 'On Fire', desc: '3 day streak', check: (d) => {
-                const s = JSON.parse(localStorage.getItem('verseStreak') || '{}');
-                return (s.streak || 0) >= 3;
-            }},
-            { id: 'week_warrior', icon: '⚔️', name: 'Warrior', desc: '7 day streak', check: (d) => {
-                const s = JSON.parse(localStorage.getItem('verseStreak') || '{}');
-                return (s.streak || 0) >= 7;
-            }},
-            { id: 'fortnight', icon: '🔥', name: 'Unstoppable', desc: '14 day streak', check: (d) => {
-                const s = JSON.parse(localStorage.getItem('verseStreak') || '{}');
-                return (s.streak || 0) >= 14;
-            }},
-            { id: 'month_master', icon: '📅', name: 'Month Master', desc: '30 day streak', check: (d) => {
-                const s = JSON.parse(localStorage.getItem('verseStreak') || '{}');
-                return (s.streak || 0) >= 30;
-            }},
-            
-            // Share Achievements
-            { id: 'share_the_word', icon: '📢', name: 'Evangelist', desc: 'Share 5 verses', check: () => (localStorage.getItem('sharedVerses') || '').split(',').filter(x=>x).length >= 5 },
-            { id: 'spreader', icon: '🌐', name: 'Spreader', desc: 'Share 20 verses', check: () => (localStorage.getItem('sharedVerses') || '').split(',').filter(x=>x).length >= 20 },
-            { id: 'missionary', icon: '✝️', name: 'Missionary', desc: 'Share 50 verses', check: () => (localStorage.getItem('sharedVerses') || '').split(',').filter(x=>x).length >= 50 },
-            
-            // Time-based Achievements
-            { id: 'night_owl', icon: '🦉', name: 'Night Owl', desc: 'Visit after midnight', check: () => new Date().getHours() < 5 },
-            { id: 'early_bird', icon: '🌅', name: 'Early Bird', desc: 'Visit before 6am', check: () => new Date().getHours() < 6 && new Date().getHours() >= 4 }
-        ];
+function getSharedVerseCount() {
+    return (localStorage.getItem('sharedVerses') || '').split(',').filter(x => x).length;
+}
 
-        function loadAchievements(stats) {
+function getStreakCount() {
+    const s = JSON.parse(localStorage.getItem('verseStreak') || '{}');
+    return s.streak || 0;
+}
+
+const ACHIEVEMENTS = [
+    // Like Achievements
+    { id: 'first_like', icon: '❤️', name: 'First Love', desc: 'Like your first verse', goal: 1, progress: (d) => d.liked, check: (d) => d.liked >= 1 },
+    { id: 'liker_50', icon: '💖', name: 'Appreciator', desc: 'Like 50 verses', goal: 50, progress: (d) => d.liked, check: (d) => d.liked >= 50 },
+    { id: 'liker_200', icon: '💗', name: 'Enthusiast', desc: 'Like 200 verses', goal: 200, progress: (d) => d.liked, check: (d) => d.liked >= 200 },
+    { id: 'liker_500', icon: '💝', name: 'Devoted', desc: 'Like 500 verses', goal: 500, progress: (d) => d.liked, check: (d) => d.liked >= 500 },
+
+    // Save Achievements
+    { id: 'collector', icon: '📚', name: 'Collector', desc: 'Save 10 verses', goal: 10, progress: (d) => d.saved, check: (d) => d.saved >= 10 },
+    { id: 'librarian', icon: '🏛️', name: 'Librarian', desc: 'Save 50 verses', goal: 50, progress: (d) => d.saved, check: (d) => d.saved >= 50 },
+    { id: 'archivist', icon: '📝', name: 'Archivist', desc: 'Save 150 verses', goal: 150, progress: (d) => d.saved, check: (d) => d.saved >= 150 },
+    { id: 'curator', icon: '🏺', name: 'Curator', desc: 'Save 300 verses', goal: 300, progress: (d) => d.saved, check: (d) => d.saved >= 300 },
+
+    // Comment Achievements
+    { id: 'first_comment', icon: '💬', name: 'Voice', desc: 'Post a comment', goal: 1, progress: (d) => d.comments, check: (d) => d.comments >= 1 },
+    { id: 'conversationalist', icon: '🗣️', name: 'Chatty', desc: 'Post 25 comments', goal: 25, progress: (d) => d.comments, check: (d) => d.comments >= 25 },
+    { id: 'storyteller', icon: '📖', name: 'Storyteller', desc: 'Post 75 comments', goal: 75, progress: (d) => d.comments, check: (d) => d.comments >= 75 },
+    { id: 'oracle', icon: '🔮', name: 'Oracle', desc: 'Post 150 comments', goal: 150, progress: (d) => d.comments, check: (d) => d.comments >= 150 },
+
+    // View/Explorer Achievements
+    { id: 'explorer', icon: '🔍', name: 'Explorer', desc: 'View 100 verses', goal: 100, progress: (d) => d.total_verses, check: (d) => d.total_verses >= 100 },
+    { id: 'scholar', icon: '🎓', name: 'Scholar', desc: 'View 500 verses', goal: 500, progress: (d) => d.total_verses, check: (d) => d.total_verses >= 500 },
+    { id: 'sage', icon: '📿', name: 'Sage', desc: 'View 1000 verses', goal: 1000, progress: (d) => d.total_verses, check: (d) => d.total_verses >= 1000 },
+    { id: 'master', icon: '🧠', name: 'Master', desc: 'View 2500 verses', goal: 2500, progress: (d) => d.total_verses, check: (d) => d.total_verses >= 2500 },
+
+    // Streak Achievements
+    { id: 'three_day_streak', icon: '🔥', name: 'On Fire', desc: '3 day streak', goal: 3, progress: () => getStreakCount(), check: () => getStreakCount() >= 3 },
+    { id: 'week_warrior', icon: '⚔️', name: 'Warrior', desc: '7 day streak', goal: 7, progress: () => getStreakCount(), check: () => getStreakCount() >= 7 },
+    { id: 'fortnight', icon: '🔥', name: 'Unstoppable', desc: '14 day streak', goal: 14, progress: () => getStreakCount(), check: () => getStreakCount() >= 14 },
+    { id: 'month_master', icon: '📅', name: 'Month Master', desc: '30 day streak', goal: 30, progress: () => getStreakCount(), check: () => getStreakCount() >= 30 },
+
+    // Share Achievements
+    { id: 'share_the_word', icon: '📢', name: 'Evangelist', desc: 'Share 5 verses', goal: 5, progress: () => getSharedVerseCount(), check: () => getSharedVerseCount() >= 5 },
+    { id: 'spreader', icon: '🌐', name: 'Spreader', desc: 'Share 20 verses', goal: 20, progress: () => getSharedVerseCount(), check: () => getSharedVerseCount() >= 20 },
+    { id: 'missionary', icon: '✝️', name: 'Missionary', desc: 'Share 50 verses', goal: 50, progress: () => getSharedVerseCount(), check: () => getSharedVerseCount() >= 50 },
+
+    // Time-based Achievements
+    { id: 'night_owl', icon: '🦉', name: 'Night Owl', desc: 'Visit after midnight', goal: 1, progress: () => (new Date().getHours() < 5 ? 1 : 0), check: () => new Date().getHours() < 5 },
+    { id: 'early_bird', icon: '🌄', name: 'Early Bird', desc: 'Visit before 6am', goal: 1, progress: () => (new Date().getHours() < 6 && new Date().getHours() >= 4 ? 1 : 0), check: () => new Date().getHours() < 6 && new Date().getHours() >= 4 }
+];
+
+function getAchievementProgress(ach, stats, isUnlocked) {
+    const goal = Math.max(1, Number(ach.goal || 1));
+    let current = 0;
+    if (typeof ach.progress === 'function') {
+        current = Number(ach.progress(stats)) || 0;
+    } else if (typeof ach.check === 'function') {
+        current = ach.check(stats) ? goal : 0;
+    }
+    if (isUnlocked) current = Math.max(current, goal);
+    const pct = Math.max(0, Math.min(100, (current / goal) * 100));
+    const label = goal > 1 ? `${Math.min(current, goal)}/${goal}` : (isUnlocked ? 'Complete' : 'Locked');
+    return { pct, label };
+}
+
+function loadAchievements(stats) {
             const unlocked = JSON.parse(localStorage.getItem('unlockedAchievements') || '[]');
             const grid = document.getElementById('achievementGrid');
             grid.innerHTML = '';
@@ -5273,7 +5329,7 @@
                     unlocked.push(ach.id);
                     const awarded = awardXp(ACHIEVEMENT_XP, 'achievement', ach.id);
                     if (settings.notifications) {
-                        showToast(`🏆 Unlocked: ${ach.name}! +${ACHIEVEMENT_XP} XP`);
+                        showToast(`ðŸ† Unlocked: ${ach.name}! +${ACHIEVEMENT_XP} XP`);
                     }
                     if (awarded) AudioSys.playSuccess();
                 }
@@ -5300,10 +5356,17 @@
                 
                 // Tooltip events
                 badge.addEventListener('mouseenter', (e) => {
-                    tooltip.textContent = `${ach.name}: ${ach.desc}${isUnlocked ? ' ✓' : ' (Locked)'}`;
+                    const progress = getAchievementProgress(ach, stats, isUnlocked);
+                    tooltip.innerHTML = `
+                        <div>${ach.name}: ${ach.desc}${isUnlocked ? ' ✓' : ' (Locked)'}</div>
+                        <div class="achievement-progress">
+                            <div class="achievement-progress-fill" style="width: ${progress.pct}%"></div>
+                        </div>
+                        <div class="achievement-progress-label">${progress.label}</div>
+                    `;
                     const rect = badge.getBoundingClientRect();
                     tooltip.style.left = (rect.left + rect.width/2) + 'px';
-                    tooltip.style.top = (rect.top - 30) + 'px';
+                    tooltip.style.top = (rect.top - 36) + 'px';
                     tooltip.style.transform = 'translateX(-50%)';
                     tooltip.classList.add('visible');
                 });
@@ -5494,7 +5557,7 @@
                 const xpReward = Number(data.xp_reward || 0);
                 const challengeText = data.text || 'Save 2 verses to your library';
                 document.getElementById('challengeText').textContent = xpReward
-                    ? `${challengeText} • ${xpReward} XP`
+                    ? `${challengeText} â€¢ ${xpReward} XP`
                     : challengeText;
                 document.getElementById('challengeGoal').textContent = data.goal || 2;
                 const progress = Math.max(0, Number(data.progress || 0));
@@ -5519,7 +5582,7 @@
                         localStorage.setItem(DAILY_CHALLENGE_TOAST_KEY, periodKey);
                         const awarded = awardXp(xpReward || 100, 'challenge', periodKey);
                         if (awarded) {
-                            showToast(`🎯 Challenge Complete! +${xpReward || 100} XP`);
+                            showToast(`ðŸŽ¯ Challenge Complete! +${xpReward || 100} XP`);
                             AudioSys.playSuccess();
                         }
                     }
@@ -5636,7 +5699,7 @@
                 const ref = (p.reference || p.ref || '').trim();
                 if (!ref) return;
                 const title = (p.title || '').trim();
-                const label = title ? `${ref} — ${title}` : ref;
+                const label = title ? `${ref} â€” ${title}` : ref;
                 const opt = document.createElement('option');
                 opt.value = String(idx);
                 opt.textContent = label;
@@ -5658,7 +5721,7 @@
 
         function parsePickReference(ref) {
             if (!ref) return null;
-            const match = ref.match(/^(.+?)\\s+(\\d+)(?:\\s*[-–]\\s*(\\d+))?$/);
+            const match = ref.match(/^(.+?)\\s+(\\d+)(?:\\s*[-â€“]\\s*(\\d+))?$/);
             if (!match) return null;
             return {
                 book: match[1].trim(),
@@ -5879,7 +5942,7 @@
                 renderReaderPage();
                 if (metaEl) {
                     const translationLabel = data.translation || data.translation_id || translation;
-                    metaEl.textContent = `${translationLabel} • ${data.verses ? data.verses.length : 0} verses`;
+                    metaEl.textContent = `${translationLabel} â€¢ ${data.verses ? data.verses.length : 0} verses`;
                 }
                 contentEl.scrollTop = 0;
             } catch (_) {
@@ -5946,7 +6009,7 @@
             const verse = verses[dayOfYear % verses.length];
             
             document.getElementById('verseOfDayContent').textContent = `"${verse.text}"`;
-            document.getElementById('verseOfDayRef').textContent = `— ${verse.ref}`;
+            document.getElementById('verseOfDayRef').textContent = `â€” ${verse.ref}`;
             document.getElementById('vodDate').textContent = new Date().toLocaleDateString();
         }
 
@@ -5978,7 +6041,7 @@
                 const recList = document.getElementById('recList');
                 recList.innerHTML = `
                     <div class="rec-card" style="animation: slideIn 0.3s ease;">
-                        <div class="rec-reason">💭 ${mood.charAt(0).toUpperCase() + mood.slice(1)}</div>
+                        <div class="rec-reason">ðŸ’­ ${mood.charAt(0).toUpperCase() + mood.slice(1)}</div>
                         <div style="font-style: italic; margin-bottom: 8px;">${verse.text}</div>
                         <div style="font-weight: 700; color: var(--primary);">${verse.ref}</div>
                     </div>
@@ -6099,7 +6162,7 @@
         }
 
         function renderCommentWithReactions(comment) {
-            const reactions = comment.reactions || { '❤️': 0, '🙏': 0, '✝️': 0, '💪': 0 };
+            const reactions = comment.reactions || { 'â¤ï¸': 0, 'ðŸ™': 0, 'âœï¸': 0, 'ðŸ’ª': 0 };
             return `
                 <div class="comment" data-comment-id="${comment.id}">
                     <div class="comment-header">
@@ -6118,7 +6181,7 @@
                     <div class="comment-replies" id="replies-${comment.id}"></div>
                     <div class="reply-input-area" id="reply-box-${comment.id}" style="display: none;">
                         <input type="text" class="comment-input" placeholder="Write a reply..." id="reply-input-${comment.id}">
-                        <button class="send-btn" onclick="postReply(${comment.id})">➤</button>
+                        <button class="send-btn" onclick="postReply(${comment.id})">âž¤</button>
                     </div>
                 </div>
             `;
@@ -6148,7 +6211,7 @@
             }
         }
 
-        function spawnReactionBurst(targetEl, emoji = '✨', count = 6) {
+        function spawnReactionBurst(targetEl, emoji = 'âœ¨', count = 6) {
             if (!targetEl || document.body.classList.contains('no-animations')) return;
             const rect = targetEl.getBoundingClientRect();
             const cx = rect.left + rect.width / 2;
@@ -6171,7 +6234,7 @@
                     emoji = type;
                     type = 'comment';
                 }
-                const normalizedReaction = ({ '❤️': 'heart', '🙏': 'pray', '✝️': 'cross' }[emoji] || emoji || '').toLowerCase();
+                const normalizedReaction = ({ 'â¤ï¸': 'heart', 'ðŸ™': 'pray', 'âœï¸': 'cross' }[emoji] || emoji || '').toLowerCase();
                 const itemType = type === 'community' ? 'community' : 'comment';
                 const res = await fetch('/api/comments/reaction', {
                     method: 'POST',
@@ -6183,8 +6246,8 @@
                     showToast(data.error || 'Reaction failed');
                     return;
                 }
-                const burstMap = { heart: '❤️', pray: '🙏', cross: '✝️' };
-                const burstEmoji = burstMap[normalizedReaction] || '✨';
+                const burstMap = { heart: 'â¤ï¸', pray: 'ðŸ™', cross: 'âœï¸' };
+                const burstEmoji = burstMap[normalizedReaction] || 'âœ¨';
                 spawnReactionBurst(btnEl || document.body, burstEmoji, 5);
                 if (itemType === 'community') {
                     loadCommunityMessages();
@@ -6423,7 +6486,7 @@
             const state = active && !active.paused ? 'Playing' : 'Paused';
             const volPct = Math.round((aboutVolume || 0) * 100);
             if (label) {
-                label.textContent = `Slide ${aboutSlideIndex + 1}/${total} • ${state} • Vol ${volPct}%`;
+                label.textContent = `Slide ${aboutSlideIndex + 1}/${total} â€¢ ${state} â€¢ Vol ${volPct}%`;
             }
         }
 
@@ -6631,7 +6694,7 @@
             document.getElementById('soundToggle').classList.toggle('active');
             if (settings.sound) AudioSys.playSuccess();
             saveSettings();
-            showToast(settings.sound ? 'Sound ON 🔊' : 'Sound OFF 🔇');
+            showToast(settings.sound ? 'Sound ON ðŸ”Š' : 'Sound OFF ðŸ”‡');
         }
 
         function toggleCompact() {
@@ -6648,7 +6711,7 @@
             document.getElementById('notificationToggle').classList.toggle('active');
             AudioSys.playClick();
             saveSettings();
-            showToast(settings.notifications ? 'Notifications ON 🔔' : 'Notifications OFF 🔕');
+            showToast(settings.notifications ? 'Notifications ON ðŸ””' : 'Notifications OFF ðŸ”•');
         }
         
         function toggleParticles() {
@@ -6664,7 +6727,7 @@
             
             AudioSys.playClick();
             saveSettings();
-            showToast(settings.particles ? 'Particles ON ✨' : 'Particles OFF');
+            showToast(settings.particles ? 'Particles ON âœ¨' : 'Particles OFF');
         }
         
         function toggleHighContrast() {
@@ -6766,7 +6829,7 @@
             
             AudioSys.playClick();
             saveSettings();
-            showToast(settings.ttsEnabled ? '🔊 Auto-speak ON' : '🔇 Auto-speak OFF');
+            showToast(settings.ttsEnabled ? 'ðŸ”Š Auto-speak ON' : 'ðŸ”‡ Auto-speak OFF');
         }
         
         function changeTTSSpeed(speed) {
@@ -6778,7 +6841,7 @@
         function testTTS() {
             const testText = "For God so loved the world, that he gave his only begotten Son.";
             TTS.speak(testText, settings.ttsSpeed);
-            showToast('🔊 Playing test...');
+            showToast('ðŸ”Š Playing test...');
         }
         
         function speakVerse(verseText, verseRef) {
@@ -6972,9 +7035,9 @@
             
             // Play appropriate sound
             if (settings.sound) {
-                if (type === 'success' || msg.includes('success') || msg.includes('✓') || msg.includes('ON')) {
+                if (type === 'success' || msg.includes('success') || msg.includes('âœ“') || msg.includes('ON')) {
                     AudioSys.playSuccess();
-                } else if (type === 'error' || msg.includes('error') || msg.includes('❌') || msg.includes('OFF')) {
+                } else if (type === 'error' || msg.includes('error') || msg.includes('âŒ') || msg.includes('OFF')) {
                     AudioSys.playError();
                 } else {
                     AudioSys.playNotification();
@@ -7009,6 +7072,7 @@
     </script>
 </body>
 </html>
+
 
 
 

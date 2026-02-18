@@ -225,10 +225,216 @@
             letter-spacing: 0.15px;
         }
 
+        /* ===== NOIR REDESIGN (ace.me inspired) ===== */
+        body.noir-mode {
+            color-scheme: dark;
+            background: #020203 !important;
+            --bg: #020203;
+            --bg-2: #06070a;
+            --surface: rgba(14, 14, 18, 0.74);
+            --surface-strong: rgba(18, 18, 22, 0.92);
+            --glass-bg: rgba(10, 10, 12, 0.92);
+            --glass-border: rgba(255, 255, 255, 0.06);
+            --glass-highlight: rgba(255, 255, 255, 0.04);
+            --primary: #e8ecf4;
+            --primary-glow: rgba(180, 190, 230, 0.15);
+            --secondary: #9aa7c5;
+            --success: #4ce6b2;
+            --warning: #ffd27a;
+            --danger: #ff6b6b;
+            --text: #f1f3f8;
+            --text-secondary: #b6bccb;
+            --text-tertiary: #7d8698;
+            --ink-strong: rgba(0, 0, 0, 0.65);
+            --ink: rgba(0, 0, 0, 0.45);
+            --ink-soft: rgba(0, 0, 0, 0.2);
+            --fullscreen-bg: rgba(6, 7, 9, 0.98);
+            position: relative;
+        }
+
+        body.noir-mode::before {
+            content: '';
+            position: fixed;
+            inset: -20%;
+            background:
+                radial-gradient(520px 320px at 14% 10%, rgba(255, 255, 255, 0.06), transparent 62%),
+                radial-gradient(520px 320px at 88% 12%, rgba(255, 255, 255, 0.04), transparent 66%),
+                radial-gradient(520px 360px at 50% 110%, rgba(255, 255, 255, 0.05), transparent 72%),
+                linear-gradient(180deg, #020203 0%, #06070a 100%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        body.noir-mode::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background:
+                linear-gradient(0deg, rgba(255,255,255,0.03), rgba(255,255,255,0.03)),
+                repeating-linear-gradient(90deg, rgba(255,255,255,0.03) 0, rgba(255,255,255,0.03) 1px, transparent 1px, transparent 110px),
+                repeating-linear-gradient(0deg, rgba(255,255,255,0.025) 0, rgba(255,255,255,0.025) 1px, transparent 1px, transparent 110px);
+            opacity: 0.12;
+            pointer-events: none;
+            z-index: 1;
+            mix-blend-mode: screen;
+        }
+
+        body.noir-mode .ambient-bg { display: none; }
+        body.noir-mode .particles { opacity: 0.05; }
+
+        @keyframes floatIn {
+            from { opacity: 0; transform: translateY(16px) scale(0.98); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes noirRise {
+            from { opacity: 0; transform: translateY(22px) scale(0.985); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes glowPulse {
+            0%, 100% { box-shadow: 0 0 0 rgba(255,255,255,0); }
+            50% { box-shadow: 0 12px 40px rgba(120, 140, 255, 0.18); }
+        }
+
+        body.noir-mode .glass-card,
+        body.noir-mode .card,
+        body.noir-mode .verse-card,
+        body.noir-mode .profile-info-card,
+        body.noir-mode .stat-card,
+        body.noir-mode .notice-card,
+        body.noir-mode .comment,
+        body.noir-mode .library-item,
+        body.noir-mode .bible-reader,
+        body.noir-mode .challenge-card {
+            background: rgba(9,9,11,0.94);
+            border: 1px solid rgba(255,255,255,0.08);
+            box-shadow: 0 26px 70px rgba(0,0,0,0.75);
+            backdrop-filter: blur(20px);
+            animation: noirRise 0.7s ease both;
+        }
+
+        body.noir-mode .glass-card:hover,
+        body.noir-mode .card:hover,
+        body.noir-mode .verse-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 32px 80px rgba(0,0,0,0.7);
+            border-color: rgba(255,255,255,0.2);
+        }
+
+        body.noir-mode .sidebar {
+            background: rgba(10,10,12,0.92);
+            border: 1px solid rgba(255,255,255,0.06);
+            box-shadow: 0 30px 80px rgba(0,0,0,0.7);
+        }
+
+        body.noir-mode .nav-item {
+            color: var(--text-secondary);
+            background: transparent;
+            border: 1px solid transparent;
+            transition: all 0.2s ease;
+        }
+
+        body.noir-mode .nav-item:hover {
+            color: #fff;
+            background: rgba(255,255,255,0.06);
+        }
+
+        body.noir-mode .nav-item.active {
+            color: #fff;
+            background: rgba(255,255,255,0.14);
+            border-color: rgba(255,255,255,0.18);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+        }
+
+        body.noir-mode .header {
+            background: rgba(8,8,10,0.96);
+            border-color: rgba(255,255,255,0.08);
+        }
+
+        body.noir-mode .brand-icon {
+            background: linear-gradient(145deg, #1a1b22, #0b0c10 52%, #1f2026);
+            box-shadow: 0 6px 24px rgba(0,0,0,0.7);
+            border: 1px solid rgba(255,255,255,0.12);
+        }
+
+        body.noir-mode .brand-icon::before {
+            border-color: rgba(255,255,255,0.08);
+        }
+
+        body.noir-mode .nav-item.active {
+            background: rgba(255,255,255,0.16);
+            color: #fff;
+            box-shadow: 0 12px 32px rgba(0,0,0,0.7);
+        }
+
+        body.noir-mode .nav-item:hover {
+            background: rgba(255,255,255,0.08);
+            color: #fff;
+        }
+
+        body.noir-mode .nav-item.active .nav-icon {
+            filter: grayscale(1);
+        }
+
+        body.noir-mode .tab-btn,
+        body.noir-mode .btn,
+        body.noir-mode .action-btn,
+        body.noir-mode .bible-reader-btn,
+        body.noir-mode .gen-btn,
+        body.noir-mode .send-btn {
+            background: rgba(255,255,255,0.05);
+            color: #f8fafc;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 999px;
+            transition: all 0.25s ease;
+        }
+
+        body.noir-mode .tab-btn:hover,
+        body.noir-mode .btn:hover,
+        body.noir-mode .action-btn:hover,
+        body.noir-mode .bible-reader-btn:hover,
+        body.noir-mode .gen-btn:hover,
+        body.noir-mode .send-btn:hover {
+            background: rgba(255,255,255,0.18);
+            transform: translateY(-2px);
+        }
+
+        body.noir-mode input,
+        body.noir-mode textarea,
+        body.noir-mode select,
+        body.noir-mode .search-box,
+        body.noir-mode .setting-select {
+            background: rgba(8,8,10,0.98);
+            border: 1px solid rgba(255,255,255,0.08);
+            color: #f5f7ff;
+        }
+
+        body.noir-mode .tab-view.active {
+            animation: noirRise 0.8s ease both;
+        }
+        body.noir-mode .tab-view.active > * { animation: noirRise 0.75s ease both; }
+        body.noir-mode .tab-view.active > *:nth-child(1) { animation-delay: 0.04s; }
+        body.noir-mode .tab-view.active > *:nth-child(2) { animation-delay: 0.08s; }
+        body.noir-mode .tab-view.active > *:nth-child(3) { animation-delay: 0.12s; }
+        body.noir-mode .tab-view.active > *:nth-child(4) { animation-delay: 0.16s; }
+        body.noir-mode .tab-view.active > *:nth-child(5) { animation-delay: 0.2s; }
+        body.noir-mode .tab-view.active > *:nth-child(6) { animation-delay: 0.24s; }
+
+        body.noir-mode .daily-challenge {
+            border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 0 22px 60px rgba(0,0,0,0.55);
+            animation: glowPulse 6s ease-in-out infinite;
+        }
+
+        body.noir-mode .modal-content {
+            background: rgba(12,12,14,0.92);
+            border: 1px solid rgba(255,255,255,0.12);
+            box-shadow: 0 30px 70px rgba(0,0,0,0.6);
+        }
+
         /* App Container */
         .app {
             position: relative;
-            z-index: 1;
+            z-index: 2;
             display: flex;
             flex-direction: column;
             min-height: 100vh;
@@ -3084,7 +3290,7 @@
         .mb-4 { margin-bottom: 16px; }
     </style>
 </head>
-<body>
+<body class="noir-mode">
     <div class="ambient-bg">
         <div class="ambient-orb orb-1"></div>
         <div class="ambient-orb orb-2"></div>
@@ -3799,7 +4005,7 @@
             <div class="setting-item">
                 <div>
                     <div class="setting-label">Sound Effects</div>
-                    <div class="setting-desc">Play sound on new verses</div>
+                    <div class="setting-desc">Professional interface sounds</div>
                 </div>
                 <div class="toggle active" id="soundToggle" onclick="toggleSound()">
                     <div class="toggle-thumb"></div>
@@ -4496,6 +4702,7 @@
 
         // Tab Switching
         function switchTab(tab, btn = null) {
+            AudioSys.playSwitch();
             const prevTab = currentTab;
             currentTab = tab;
             updateTabThemeClass(tab);
@@ -4843,12 +5050,14 @@
                 document.getElementById('fullscreenText').textContent = `"${v.text}"\n\n— ${v.ref}`;
                 updateFullscreenButtons(v.id);
                 fs.classList.add('active');
+                AudioSys.playModal();
             }
         }
 
         function closeFullscreenOverlay(e) {
             if (e.target.id === 'fullscreen') {
                 document.getElementById('fullscreen').classList.remove('active');
+                AudioSys.playModal();
             }
         }
 
@@ -6153,12 +6362,14 @@ function loadAchievements(stats) {
             if (readerPageIndex <= 0) return;
             readerPageIndex -= 1;
             renderReaderPage();
+            AudioSys.playPage();
         }
 
         function nextReaderPage() {
             if (readerPageIndex >= readerPages.length - 1) return;
             readerPageIndex += 1;
             renderReaderPage();
+            AudioSys.playPage();
         }
 
         function toggleReaderFullscreen() {
@@ -6166,6 +6377,7 @@ function loadAchievements(stats) {
             if (!overlay) return;
             const active = overlay.classList.toggle('active');
             document.body.classList.toggle('reader-fullscreen-open', active);
+            AudioSys.playModal();
             const chapter = document.getElementById('readerCurrentChapter');
             const fsChapter = document.getElementById('readerFullscreenChapter');
             if (fsChapter && chapter) fsChapter.textContent = chapter.textContent;
@@ -6949,56 +7161,133 @@ function loadAchievements(stats) {
         // Settings
         function openSettings() {
             document.getElementById('settingsModal').classList.add('active');
+            AudioSys.playModal();
         }
 
         function closeSettings(e) {
             if (!e || e.target.id === 'settingsModal') {
                 document.getElementById('settingsModal').classList.remove('active');
+                AudioSys.playModal();
             }
         }
 
         // ===== AUDIO SYSTEM =====
         const AudioSys = {
             ctx: null,
+            master: null,
+            noiseBuffer: null,
+            lastPlay: 0,
             init() {
                 if (!this.ctx) {
                     this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                    this.master = this.ctx.createGain();
+                    this.master.gain.value = 0.26;
+                    this.master.connect(this.ctx.destination);
+                    this.noiseBuffer = this._createNoiseBuffer();
                 }
             },
-            playTone(freq, type = 'sine', duration = 0.15, vol = 0.3) {
-                if (!settings.sound) return;
+            _createNoiseBuffer() {
+                const buffer = this.ctx.createBuffer(1, this.ctx.sampleRate, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < data.length; i++) {
+                    data[i] = (Math.random() * 2 - 1) * 0.7;
+                }
+                return buffer;
+            },
+            _allow() {
+                if (!settings.sound) return false;
                 this.init();
                 if (this.ctx.state === 'suspended') this.ctx.resume();
-                
+                const now = performance.now();
+                if (now - this.lastPlay < 50) return false;
+                this.lastPlay = now;
+                return true;
+            },
+            _playOsc({freq, type = 'sine', dur = 0.12, gain = 0.2, attack = 0.002, decay = 0.08, detune = 0, filter} = {}) {
                 const osc = this.ctx.createOscillator();
-                const gain = this.ctx.createGain();
-                
-                osc.frequency.value = freq;
+                const g = this.ctx.createGain();
                 osc.type = type;
-                gain.gain.setValueAtTime(vol, this.ctx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + duration);
-                
-                osc.connect(gain);
-                gain.connect(this.ctx.destination);
-                
+                osc.frequency.value = freq;
+                osc.detune.value = detune;
+                g.gain.setValueAtTime(0.0001, this.ctx.currentTime);
+                g.gain.linearRampToValueAtTime(gain, this.ctx.currentTime + attack);
+                g.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + dur + decay);
+                let node = osc;
+                if (filter) {
+                    const f = this.ctx.createBiquadFilter();
+                    f.type = filter.type || 'lowpass';
+                    f.frequency.value = filter.freq || 1200;
+                    f.Q.value = filter.q || 0.7;
+                    node.connect(f);
+                    node = f;
+                }
+                node.connect(g);
+                g.connect(this.master);
                 osc.start();
-                osc.stop(this.ctx.currentTime + duration);
+                osc.stop(this.ctx.currentTime + dur + decay);
             },
-            playSuccess() {
-                this.playTone(523.25, 'sine', 0.1, 0.2); // C5
-                setTimeout(() => this.playTone(659.25, 'sine', 0.2, 0.2), 100); // E5
+            _playNoise({dur = 0.08, gain = 0.08, freq = 1200, q = 0.8, type = 'bandpass'} = {}) {
+                const source = this.ctx.createBufferSource();
+                source.buffer = this.noiseBuffer;
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = type;
+                filter.frequency.value = freq;
+                filter.Q.value = q;
+                const g = this.ctx.createGain();
+                g.gain.setValueAtTime(0.0001, this.ctx.currentTime);
+                g.gain.linearRampToValueAtTime(gain, this.ctx.currentTime + 0.01);
+                g.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + dur);
+                source.connect(filter);
+                filter.connect(g);
+                g.connect(this.master);
+                source.start();
+                source.stop(this.ctx.currentTime + dur);
             },
-            playError() {
-                this.playTone(200, 'sawtooth', 0.3, 0.2);
+            playTap() {
+                if (!this._allow()) return;
+                this._playOsc({freq: 420, type: 'triangle', dur: 0.05, gain: 0.18, filter: {type: 'lowpass', freq: 1800}});
+                this._playNoise({dur: 0.035, gain: 0.06, freq: 1600});
             },
             playClick() {
-                this.playTone(800, 'sine', 0.05, 0.1);
+                this.playTap();
+            },
+            playSwitch() {
+                if (!this._allow()) return;
+                this._playOsc({freq: 520, type: 'sine', dur: 0.06, gain: 0.16});
+                setTimeout(() => this._playOsc({freq: 760, type: 'sine', dur: 0.07, gain: 0.14}), 40);
+            },
+            playPage() {
+                if (!this._allow()) return;
+                this._playNoise({dur: 0.08, gain: 0.06, freq: 900, q: 0.6});
+                this._playOsc({freq: 300, type: 'triangle', dur: 0.08, gain: 0.06});
+            },
+            playSuccess() {
+                if (!this._allow()) return;
+                this._playOsc({freq: 520, type: 'sine', dur: 0.08, gain: 0.12});
+                setTimeout(() => this._playOsc({freq: 660, type: 'sine', dur: 0.12, gain: 0.12}), 60);
+                setTimeout(() => this._playOsc({freq: 820, type: 'sine', dur: 0.14, gain: 0.1}), 120);
+            },
+            playError() {
+                if (!this._allow()) return;
+                this._playOsc({freq: 140, type: 'sawtooth', dur: 0.18, gain: 0.12, filter: {type: 'lowpass', freq: 600}});
+                this._playNoise({dur: 0.12, gain: 0.05, freq: 400});
             },
             playNotification() {
-                this.playTone(880, 'sine', 0.1, 0.15);
-                setTimeout(() => this.playTone(1100, 'sine', 0.2, 0.15), 100);
+                if (!this._allow()) return;
+                this._playOsc({freq: 880, type: 'sine', dur: 0.1, gain: 0.12});
+                setTimeout(() => this._playOsc({freq: 1320, type: 'sine', dur: 0.14, gain: 0.1}), 80);
+            },
+            playModal() {
+                if (!this._allow()) return;
+                this._playOsc({freq: 360, type: 'triangle', dur: 0.1, gain: 0.09});
             }
         };
+
+        document.addEventListener('pointerdown', (e) => {
+            if (!settings.sound) return;
+            const target = e.target.closest('button, .btn, .action-btn, .tab-btn, .nav-item, .icon-btn, .send-btn, .bible-reader-btn, .toggle, .segment-btn');
+            if (target) AudioSys.playTap();
+        });
 
         function applyTheme() {
             document.documentElement.setAttribute('data-theme', settings.darkMode ? 'dark' : 'light');

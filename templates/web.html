@@ -5453,18 +5453,11 @@
 
             const roleTag = document.getElementById('roleTag');
             if (roleTag) {
-<<<<<<< HEAD
                 const baseRole = String(userData.role || 'user');
                 const effectiveRole = pickHigherRole(baseRole, userRole || baseRole);
                 if (effectiveRole && effectiveRole !== 'user') {
                     roleTag.style.display = 'inline-block';
                     roleTag.textContent = effectiveRole.replace('_', ' ').toUpperCase();
-=======
-                const role = String(userData.role || 'user');
-                if (role && role !== 'user') {
-                    roleTag.style.display = 'inline-block';
-                    roleTag.textContent = role.replace('_', ' ').toUpperCase();
->>>>>>> fcfb6c9a7986ca28402c96975e88c8dcc82e33e8
                 } else {
                     roleTag.style.display = 'none';
                 }

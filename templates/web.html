@@ -5769,6 +5769,7 @@ function loadAchievements(stats) {
         
         // Daily Challenge + XP System
         const DAILY_CHALLENGE_TOAST_KEY = 'dailyChallengeCompleteDate';
+        const DAILY_CHALLENGE_COMPLETED_AT_PREFIX = 'dailyChallengeCompletedAt:';
         const XP_STORAGE_KEY = 'bibleXpState';
         const ACHIEVEMENT_XP = 750;
 
@@ -5838,6 +5839,16 @@ function loadAchievements(stats) {
                 const data = await res.json();
                 if (!res.ok || data.error) return;
 
+                const challengeEl = document.getElementById('dailyChallenge');
+                if (data.hide_at) {
+                    const hideAt = new Date(data.hide_at);
+                    if (!Number.isNaN(hideAt.getTime()) && Date.now() >= hideAt.getTime()) {
+                        if (challengeEl) challengeEl.style.display = 'none';
+                        return;
+                    }
+                }
+                if (challengeEl) challengeEl.style.display = 'block';
+
                 const xpReward = Number(data.xp_reward || 0);
                 const challengeText = data.text || 'Save 2 verses to your library';
                 document.getElementById('challengeText').textContent = xpReward
@@ -5856,12 +5867,22 @@ function loadAchievements(stats) {
                 const progressBarEl = document.getElementById('challengeProgressBar');
                 const progressTextEl = document.getElementById('challengeProgressText');
                 const cooldownEl = document.getElementById('challengeCooldown');
-                const challengeEl = document.getElementById('dailyChallenge');
 
                 if (data.completed) {
                     document.getElementById('challengeText').textContent = 'Challenge complete!';
                     if (challengeEl) challengeEl.classList.add('complete');
                     const periodKey = String(data.challenge_id || data.date || new Date().toISOString().slice(0, 13));
+                    const completedKey = `${DAILY_CHALLENGE_COMPLETED_AT_PREFIX}${periodKey}`;
+                    let completedAt = Number(localStorage.getItem(completedKey) || 0);
+                    if (!completedAt) {
+                        completedAt = Date.now();
+                        localStorage.setItem(completedKey, String(completedAt));
+                    }
+                    const twoHoursMs = 2 * 60 * 60 * 1000;
+                    if (Date.now() - completedAt > twoHoursMs) {
+                        if (challengeEl) challengeEl.style.display = 'none';
+                        return;
+                    }
                     if (localStorage.getItem(DAILY_CHALLENGE_TOAST_KEY) !== periodKey) {
                         localStorage.setItem(DAILY_CHALLENGE_TOAST_KEY, periodKey);
                         const awarded = awardXp(xpReward || 100, 'challenge', periodKey);

@@ -759,6 +759,21 @@ def verify_code():
         if code == role_code:
             session['admin_role'] = role
             session['admin_code'] = code
+            # Sync role onto the logged-in user record when available
+            try:
+                user_id = session.get('user_id')
+                if user_id:
+                    conn, db_type = get_db()
+                    c = conn.cursor()
+                    is_admin = 1 if role in ('owner', 'co_owner', 'mod', 'host') else 0
+                    if db_type == 'postgres':
+                        c.execute("UPDATE users SET role = %s, is_admin = %s WHERE id = %s", (role, is_admin, user_id))
+                    else:
+                        c.execute("UPDATE users SET role = ?, is_admin = ? WHERE id = ?", (role, is_admin, user_id))
+                    conn.commit()
+                    conn.close()
+            except Exception as e:
+                print(f"[WARN] Could not sync admin role to user: {e}")
             log_action(
                 "ADMIN_LOGIN",
                 f"Role: {role}",

@@ -1759,9 +1759,14 @@ def callback():
         session['is_admin'] = bool(user['is_admin']) if isinstance(user, dict) else bool(user[6])
         
         try:
-            session['role'] = user['role'] if isinstance(user, dict) else (user[10] if len(user) > 10 else 'user')
+            session_role = user['role'] if isinstance(user, dict) else (user[10] if len(user) > 10 else 'user')
         except (TypeError, KeyError):
-            session['role'] = user[10] if len(user) > 10 else 'user'
+            session_role = user[10] if len(user) > 10 else 'user'
+        session['role'] = session_role
+        # Persist admin session based on stored role so admin code is not required each login.
+        if session_role in ('owner', 'co_owner', 'mod', 'host'):
+            session['admin_role'] = session_role
+            session['is_admin'] = True
 
         log_user_activity("USER_LOGIN", user_id=user_id, message="User login", extras={"email": email})
         
@@ -2461,6 +2466,8 @@ def verify_role_code():
             
             session['is_admin'] = bool(is_admin)
             session['role'] = role
+            if role in ['owner', 'co_owner', 'mod', 'host']:
+                session['admin_role'] = role
             log_action(session['user_id'], 'role_assigned', details={'role': role, 'code_used': True})
             
             logger.info(f"Role assigned successfully: {role} for user {session['user_id']}")
@@ -2555,6 +2562,7 @@ def get_daily_challenge():
     c = get_cursor(conn, db_type)
     period_key = get_challenge_period_key()
     period_start, period_end = get_hour_window()
+    hide_at = period_start + timedelta(hours=2)
     challenge = pick_hourly_challenge(session['user_id'], period_key)
     goal = challenge.get('goal', 2)
     action = challenge.get('action', 'save')
@@ -2602,6 +2610,8 @@ def get_daily_challenge():
         conn.commit()
         progress = min(progress, goal)
         xp_reward = get_hourly_xp_reward(session['user_id'], period_key)
+        now_ts = datetime.now()
+        hidden = bool(hide_at and now_ts >= hide_at)
         return jsonify({
             "id": challenge.get('id', 'save2'),
             "text": challenge.get('text', 'Save 2 verses to your library'),
@@ -2610,6 +2620,8 @@ def get_daily_challenge():
             "date": period_key,
             "challenge_id": period_key,
             "expires_at": period_end.isoformat(),
+            "hide_at": hide_at.isoformat(),
+            "hidden": hidden,
             "xp_reward": xp_reward,
             "progress": progress,
             "completed": progress >= goal
@@ -4201,27 +4213,57 @@ def get_notifications():
             """, (session['user_id'],))
         rows = c.fetchall()
         conn.close()
+        def _parse_ts(val):
+            if not val:
+                return None
+            if isinstance(val, datetime):
+                return val
+            text = str(val).strip()
+            if not text:
+                return None
+            try:
+                return datetime.fromisoformat(text)
+            except Exception:
+                try:
+                    return datetime.fromisoformat(text.replace(' ', 'T'))
+                except Exception:
+                    return None
+
         out = []
+        now = datetime.now()
+        ttl_seconds = 30 * 60
         for row in rows:
             if hasattr(row, 'keys'):
+                n_type = row['notif_type'] or 'announcement'
+                created_at = row['created_at']
+                if n_type == 'announcement':
+                    ts = _parse_ts(created_at)
+                    if ts and (now - ts).total_seconds() > ttl_seconds:
+                        continue
                 out.append({
                     "id": row['id'],
                     "title": row['title'] or 'Notification',
                     "message": row['message'] or '',
-                    "type": row['notif_type'] or 'announcement',
+                    "type": n_type,
                     "source": row['source'] or 'admin',
                     "is_read": bool(row['is_read'] or 0),
-                    "created_at": row['created_at']
+                    "created_at": created_at
                 })
             else:
+                n_type = row[3] or 'announcement'
+                created_at = row[6]
+                if n_type == 'announcement':
+                    ts = _parse_ts(created_at)
+                    if ts and (now - ts).total_seconds() > ttl_seconds:
+                        continue
                 out.append({
                     "id": row[0],
                     "title": row[1] or 'Notification',
                     "message": row[2] or '',
-                    "type": row[3] or 'announcement',
+                    "type": n_type,
                     "source": row[4] or 'admin',
                     "is_read": bool(row[5] or 0),
-                    "created_at": row[6]
+                    "created_at": created_at
                 })
         return jsonify(out)
     except Exception as e:

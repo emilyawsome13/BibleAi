@@ -211,7 +211,11 @@ def read_system_setting(key, default=None):
         if not row:
             return default
         if hasattr(row, 'keys'):
-            return row.get('value', default)
+            try:
+                val = row['value']
+            except Exception:
+                val = None
+            return default if val is None else val
         return row[0] if row[0] is not None else default
     except Exception:
         if conn:
@@ -800,9 +804,9 @@ def get_replies_for_parent(c, db_type, parent_type, parent_id):
             timestamp = row['timestamp']
             google_name = row['google_name']
             google_picture = row['google_picture']
-            db_name = row.get('db_name')
-            db_picture = row.get('db_picture')
-            db_role = row.get('db_role')
+            db_name = row['db_name']
+            db_picture = row['db_picture']
+            db_role = row['db_role']
         except Exception:
             reply_id = row[0]
             user_id = row[1]
@@ -3341,7 +3345,7 @@ def get_comments(verse_id):
                         try:
                             user_name = user_row['name'] or google_name or "Anonymous"
                             user_picture = user_row['picture'] or ""
-                            user_role = user_row.get('role') or "user"
+                            user_role = user_row['role'] or "user"
                         except (TypeError, KeyError):
                             user_name = user_row[0] or google_name or "Anonymous"
                             user_picture = user_row[1] or ""
@@ -3575,9 +3579,9 @@ def get_community_messages():
                 timestamp = row['timestamp']
                 google_name = row['google_name']
                 google_picture = row['google_picture']
-                db_name = row.get('name')
-                db_picture = row.get('picture')
-                db_role = row.get('role')
+                db_name = row['name']
+                db_picture = row['picture']
+                db_role = row['role']
             except (TypeError, KeyError):
                 msg_id = row[0]
                 user_id = row[1]
@@ -4178,13 +4182,13 @@ def get_notifications():
         for row in rows:
             if hasattr(row, 'keys'):
                 out.append({
-                    "id": row.get('id'),
-                    "title": row.get('title') or 'Notification',
-                    "message": row.get('message') or '',
-                    "type": row.get('notif_type') or 'announcement',
-                    "source": row.get('source') or 'admin',
-                    "is_read": bool(row.get('is_read') or 0),
-                    "created_at": row.get('created_at')
+                    "id": row['id'],
+                    "title": row['title'] or 'Notification',
+                    "message": row['message'] or '',
+                    "type": row['notif_type'] or 'announcement',
+                    "source": row['source'] or 'admin',
+                    "is_read": bool(row['is_read'] or 0),
+                    "created_at": row['created_at']
                 })
             else:
                 out.append({

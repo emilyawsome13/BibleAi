@@ -730,13 +730,19 @@ def get_stats():
                 conn.rollback()
         
         users = get_count("SELECT COUNT(*) as count FROM users")
-        bans = get_count("SELECT COUNT(*) as count FROM bans")
-        
-        # PostgreSQL uses boolean, SQLite uses integer
+        now_iso = datetime.now().isoformat()
         if db_type == 'postgres':
-            banned_users = get_count("SELECT COUNT(*) as count FROM users WHERE is_banned = TRUE")
+            bans = get_count("SELECT COUNT(*) as count FROM bans WHERE expires_at IS NULL OR expires_at > %s", (now_iso,))
+            banned_users = get_count(
+                "SELECT COUNT(*) as count FROM users WHERE is_banned = TRUE AND (ban_expires_at IS NULL OR ban_expires_at > %s)",
+                (now_iso,)
+            )
         else:
-            banned_users = get_count("SELECT COUNT(*) as count FROM users WHERE is_banned = 1")
+            bans = get_count("SELECT COUNT(*) as count FROM bans WHERE expires_at IS NULL OR expires_at > ?", (now_iso,))
+            banned_users = get_count(
+                "SELECT COUNT(*) as count FROM users WHERE is_banned = 1 AND (ban_expires_at IS NULL OR ban_expires_at > ?)",
+                (now_iso,)
+            )
         
         restricted = 0
         try:
@@ -829,9 +835,14 @@ def get_users():
                 "is_banned": bool(row[5]),
                 "created_at": row[6] or "Unknown"
             })
+        conn.close()
         return jsonify(users)
     except Exception as e:
         print(f"[ERROR] Users: {e}")
+        try:
+            conn.close()
+        except Exception:
+            pass
         return jsonify({"error": str(e)}), 500
 
 @admin_bp.route('/api/bans')
@@ -874,7 +885,6 @@ def get_bans():
         """)
         
         rows = c.fetchall()
-        conn.close()
         
         bans = []
         for row in rows:

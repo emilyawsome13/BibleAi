@@ -823,6 +823,23 @@ def check_ban_status(user_id):
     c = get_cursor(conn, db_type)
     
     try:
+        # Ensure ban columns exist for older databases
+        try:
+            if db_type == 'postgres':
+                c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS ban_expires_at TIMESTAMP")
+                c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS ban_reason TEXT")
+            else:
+                try:
+                    c.execute("SELECT ban_expires_at FROM users LIMIT 1")
+                except Exception:
+                    c.execute("ALTER TABLE users ADD COLUMN ban_expires_at TEXT")
+                try:
+                    c.execute("SELECT ban_reason FROM users LIMIT 1")
+                except Exception:
+                    c.execute("ALTER TABLE users ADD COLUMN ban_reason TEXT")
+        except Exception:
+            pass
+
         if db_type == 'postgres':
             c.execute("SELECT is_banned, ban_expires_at, ban_reason FROM users WHERE id = %s", (user_id,))
         else:
@@ -2366,7 +2383,7 @@ def get_stats():
             liked = safe_count("SELECT COUNT(*) FROM likes WHERE user_id = %s", (session['user_id'],))
             saved = safe_count("SELECT COUNT(*) FROM saves WHERE user_id = %s", (session['user_id'],))
             # Count all comments by this user
-            comments = safe_count("SELECT COUNT(*) FROM comments WHERE user_id = %s", (session['user_id'],))
+            comments = safe_count("SELECT COUNT(*) FROM comments WHERE user_id = %s AND COALESCE(is_deleted, 0) = 0", (session['user_id'],))
             # Also count community messages
             community = safe_count("SELECT COUNT(*) FROM community_messages WHERE user_id = %s", (session['user_id'],))
             replies = safe_count("SELECT COUNT(*) FROM comment_replies WHERE user_id = %s AND COALESCE(is_deleted, 0) = 0", (session['user_id'],))
@@ -2374,7 +2391,7 @@ def get_stats():
             total = safe_count("SELECT COUNT(*) FROM verses")
             liked = safe_count("SELECT COUNT(*) FROM likes WHERE user_id = ?", (session['user_id'],))
             saved = safe_count("SELECT COUNT(*) FROM saves WHERE user_id = ?", (session['user_id'],))
-            comments = safe_count("SELECT COUNT(*) FROM comments WHERE user_id = ?", (session['user_id'],))
+            comments = safe_count("SELECT COUNT(*) FROM comments WHERE user_id = ? AND COALESCE(is_deleted, 0) = 0", (session['user_id'],))
             community = safe_count("SELECT COUNT(*) FROM community_messages WHERE user_id = ?", (session['user_id'],))
             replies = safe_count("SELECT COUNT(*) FROM comment_replies WHERE user_id = ? AND COALESCE(is_deleted, 0) = 0", (session['user_id'],))
         
@@ -3590,9 +3607,22 @@ def delete_comment_api(comment_id):
     try:
         # Soft delete by setting is_deleted = 1
         if db_type == 'postgres':
+            c.execute("ALTER TABLE comment_replies ADD COLUMN IF NOT EXISTS is_deleted INTEGER DEFAULT 0")
             c.execute("UPDATE comments SET is_deleted = 1 WHERE id = %s", (comment_id,))
+            c.execute(
+                "UPDATE comment_replies SET is_deleted = 1 WHERE parent_type = %s AND parent_id = %s",
+                ('comment', comment_id)
+            )
         else:
+            try:
+                c.execute("SELECT is_deleted FROM comment_replies LIMIT 1")
+            except Exception:
+                c.execute("ALTER TABLE comment_replies ADD COLUMN is_deleted INTEGER DEFAULT 0")
             c.execute("UPDATE comments SET is_deleted = 1 WHERE id = ?", (comment_id,))
+            c.execute(
+                "UPDATE comment_replies SET is_deleted = 1 WHERE parent_type = ? AND parent_id = ?",
+                ('comment', comment_id)
+            )
         conn.commit()
         
         # Log the action
@@ -3621,9 +3651,22 @@ def delete_community_api(message_id):
     try:
         # Hard delete community messages (no is_deleted column)
         if db_type == 'postgres':
+            c.execute("ALTER TABLE comment_replies ADD COLUMN IF NOT EXISTS is_deleted INTEGER DEFAULT 0")
             c.execute("DELETE FROM community_messages WHERE id = %s", (message_id,))
+            c.execute(
+                "UPDATE comment_replies SET is_deleted = 1 WHERE parent_type = %s AND parent_id = %s",
+                ('community', message_id)
+            )
         else:
+            try:
+                c.execute("SELECT is_deleted FROM comment_replies LIMIT 1")
+            except Exception:
+                c.execute("ALTER TABLE comment_replies ADD COLUMN is_deleted INTEGER DEFAULT 0")
             c.execute("DELETE FROM community_messages WHERE id = ?", (message_id,))
+            c.execute(
+                "UPDATE comment_replies SET is_deleted = 1 WHERE parent_type = ? AND parent_id = ?",
+                ('community', message_id)
+            )
         conn.commit()
         
         # Log the action
@@ -3971,4 +4014,3 @@ def mark_notifications_read():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
- 

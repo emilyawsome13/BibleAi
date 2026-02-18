@@ -72,6 +72,8 @@ if DATABASE_URL and DATABASE_URL.startswith('postgres://'):
 IS_POSTGRES = DATABASE_URL and ('postgresql' in DATABASE_URL or 'postgres' in DATABASE_URL)
 BOOK_TEXT_CACHE = {}
 BOOK_META_CACHE = {}
+BAN_SCHEMA_READY = False
+RESTRICTION_SCHEMA_READY = False
 
 FALLBACK_BOOKS = [
     {"id": "GEN", "name": "Genesis"},
@@ -819,26 +821,30 @@ def get_replies_for_parent(c, db_type, parent_type, parent_id):
 
 def check_ban_status(user_id):
     """Check if user is currently banned. Returns (is_banned, reason, expires_at)"""
+    global BAN_SCHEMA_READY
     conn, db_type = get_db()
     c = get_cursor(conn, db_type)
     
     try:
-        # Ensure ban columns exist for older databases
-        try:
-            if db_type == 'postgres':
-                c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS ban_expires_at TIMESTAMP")
-                c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS ban_reason TEXT")
-            else:
-                try:
-                    c.execute("SELECT ban_expires_at FROM users LIMIT 1")
-                except Exception:
-                    c.execute("ALTER TABLE users ADD COLUMN ban_expires_at TEXT")
-                try:
-                    c.execute("SELECT ban_reason FROM users LIMIT 1")
-                except Exception:
-                    c.execute("ALTER TABLE users ADD COLUMN ban_reason TEXT")
-        except Exception:
-            pass
+        # Ensure ban columns exist for older databases (only once per process)
+        if not BAN_SCHEMA_READY:
+            try:
+                if db_type == 'postgres':
+                    c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS ban_expires_at TIMESTAMP")
+                    c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS ban_reason TEXT")
+                else:
+                    try:
+                        c.execute("SELECT ban_expires_at FROM users LIMIT 1")
+                    except Exception:
+                        c.execute("ALTER TABLE users ADD COLUMN ban_expires_at TEXT")
+                    try:
+                        c.execute("SELECT ban_reason FROM users LIMIT 1")
+                    except Exception:
+                        c.execute("ALTER TABLE users ADD COLUMN ban_reason TEXT")
+                conn.commit()
+            except Exception:
+                pass
+            BAN_SCHEMA_READY = True
 
         if db_type == 'postgres':
             c.execute("SELECT is_banned, ban_expires_at, ban_reason FROM users WHERE id = %s", (user_id,))
@@ -1350,37 +1356,46 @@ def check_user_banned():
     if 'user_id' in session:
         # Track user presence for admin analytics.
         try:
-            conn, db_type = get_db()
-            c = get_cursor(conn, db_type)
-            c.execute("""
-                CREATE TABLE IF NOT EXISTS user_presence (
-                    user_id INTEGER PRIMARY KEY,
-                    last_seen TEXT,
-                    last_path TEXT,
-                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            now_iso = datetime.now().isoformat()
-            if db_type == 'postgres':
+            last_ping = session.get('last_presence_ping', 0)
+            now_ts = time.time()
+            should_ping = True
+            try:
+                should_ping = (now_ts - float(last_ping)) >= 20
+            except Exception:
+                should_ping = True
+            if should_ping:
+                conn, db_type = get_db()
+                c = get_cursor(conn, db_type)
                 c.execute("""
-                    INSERT INTO user_presence (user_id, last_seen, last_path, updated_at)
-                    VALUES (%s, %s, %s, %s)
-                    ON CONFLICT (user_id) DO UPDATE SET
-                        last_seen = EXCLUDED.last_seen,
-                        last_path = EXCLUDED.last_path,
-                        updated_at = EXCLUDED.updated_at
-                """, (session['user_id'], now_iso, path, now_iso))
-            else:
-                c.execute("""
-                    INSERT INTO user_presence (user_id, last_seen, last_path, updated_at)
-                    VALUES (?, ?, ?, ?)
-                    ON CONFLICT(user_id) DO UPDATE SET
-                        last_seen = excluded.last_seen,
-                        last_path = excluded.last_path,
-                        updated_at = excluded.updated_at
-                """, (session['user_id'], now_iso, path, now_iso))
-            conn.commit()
-            conn.close()
+                    CREATE TABLE IF NOT EXISTS user_presence (
+                        user_id INTEGER PRIMARY KEY,
+                        last_seen TEXT,
+                        last_path TEXT,
+                        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                now_iso = datetime.now().isoformat()
+                if db_type == 'postgres':
+                    c.execute("""
+                        INSERT INTO user_presence (user_id, last_seen, last_path, updated_at)
+                        VALUES (%s, %s, %s, %s)
+                        ON CONFLICT (user_id) DO UPDATE SET
+                            last_seen = EXCLUDED.last_seen,
+                            last_path = EXCLUDED.last_path,
+                            updated_at = EXCLUDED.updated_at
+                    """, (session['user_id'], now_iso, path, now_iso))
+                else:
+                    c.execute("""
+                        INSERT INTO user_presence (user_id, last_seen, last_path, updated_at)
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT(user_id) DO UPDATE SET
+                            last_seen = excluded.last_seen,
+                            last_path = excluded.last_path,
+                            updated_at = excluded.updated_at
+                    """, (session['user_id'], now_iso, path, now_iso))
+                conn.commit()
+                conn.close()
+                session['last_presence_ping'] = now_ts
         except Exception:
             pass
 
@@ -1408,11 +1423,12 @@ def check_user_banned():
                 </style></head>
                 <body>
                     <div class="ban-container">
-                        <h1>⛔ Account Banned</h1>
+                        <h1>Account Banned</h1>
                         <p>Your account has been suspended.</p>
                         {% if reason %}
                         <div class="reason">Reason: {{ reason }}</div>
                         {% endif %}
+                        <p>If you believe this is a mistake, contact support.</p>
                         <p><a href="/logout">Logout</a></p>
                     </div>
                 </body>
@@ -1681,10 +1697,28 @@ def callback():
         is_banned, reason, _ = check_ban_status(user_id)
         if is_banned:
             return render_template_string("""
-            <h1>Account Banned</h1>
-            <p>Your account has been banned.</p>
-            <p>Reason: {{ reason }}</p>
-            <a href="/logout">Logout</a>
+            <!DOCTYPE html>
+            <html>
+            <head><title>Account Banned</title>
+            <style>
+                body { background: #0a0a0f; color: white; font-family: system-ui; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+                .ban-container { text-align: center; padding: 40px; background: rgba(255,55,95,0.1); border: 1px solid #ff375f; border-radius: 20px; max-width: 420px; }
+                h1 { color: #ff375f; margin-bottom: 20px; }
+                .reason { background: rgba(0,0,0,0.3); padding: 15px; border-radius: 10px; margin: 20px 0; font-style: italic; }
+                a { color: #0A84FF; text-decoration: none; }
+            </style></head>
+            <body>
+                <div class="ban-container">
+                    <h1>Account Banned</h1>
+                    <p>Your account has been suspended.</p>
+                    {% if reason %}
+                    <div class="reason">Reason: {{ reason }}</div>
+                    {% endif %}
+                    <p>If you believe this is a mistake, contact support.</p>
+                    <p><a href="/logout">Logout</a></p>
+                </div>
+            </body>
+            </html>
             """, reason=reason), 403
         
         session['user_id'] = user_id
@@ -1722,6 +1756,17 @@ def check_ban():
         "expires_at": expires_at
     })
 
+@app.route('/api/restriction_status')
+def restriction_status():
+    if 'user_id' not in session:
+        return jsonify({"restricted": False})
+    is_restricted, reason, expires_at = check_comment_restriction(session['user_id'])
+    return jsonify({
+        "restricted": is_restricted,
+        "reason": reason,
+        "expires_at": expires_at
+    })
+
 @app.route('/api/current')
 def get_current():
     if 'user_id' not in session:
@@ -1729,14 +1774,13 @@ def get_current():
 
     user_id = session['user_id']
     now = time.time()
+    is_banned, reason, _ = check_ban_status(user_id)
+    if is_banned:
+        return jsonify({"error": "banned", "message": "Account banned", "reason": reason}), 403
     with _current_api_cache_lock:
         cached = _current_api_cache.get(user_id)
         if cached and (now - cached['timestamp']) < CURRENT_API_CACHE_TTL:
             return jsonify(cached['payload'])
-
-    is_banned, _, _ = check_ban_status(user_id)
-    if is_banned:
-        return jsonify({"error": "banned", "message": "Account banned"}), 403
 
     # Ensure thread is running
     generator.start_thread()
@@ -2209,34 +2253,89 @@ def get_user_info():
     
     conn, db_type = get_db()
     c = get_cursor(conn, db_type)
+    user_id = session['user_id']
+
+    def parse_dt(value):
+        if not value:
+            return None
+        if isinstance(value, datetime):
+            return value
+        try:
+            return datetime.fromisoformat(str(value))
+        except Exception:
+            try:
+                return datetime.fromisoformat(str(value).replace(' ', 'T'))
+            except Exception:
+                return None
+
+    def find_earliest_activity():
+        earliest = None
+        tables = [
+            'likes',
+            'saves',
+            'comments',
+            'community_messages',
+            'comment_replies',
+            'daily_actions'
+        ]
+        for table in tables:
+            try:
+                if db_type == 'postgres':
+                    c.execute(f"SELECT MIN(timestamp) FROM {table} WHERE user_id = %s", (user_id,))
+                else:
+                    c.execute(f"SELECT MIN(timestamp) FROM {table} WHERE user_id = ?", (user_id,))
+                row = c.fetchone()
+                value = row[0] if row else None
+                dt = parse_dt(value)
+                if dt and (earliest is None or dt < earliest):
+                    earliest = dt
+            except Exception:
+                continue
+        return earliest
     
     try:
         if db_type == 'postgres':
-            c.execute("SELECT created_at, is_admin, is_banned, role, name FROM users WHERE id = %s", (session['user_id'],))
+            c.execute("SELECT created_at, is_admin, is_banned, role, name FROM users WHERE id = %s", (user_id,))
         else:
-            c.execute("SELECT created_at, is_admin, is_banned, role, name FROM users WHERE id = ?", (session['user_id'],))
+            c.execute("SELECT created_at, is_admin, is_banned, role, name FROM users WHERE id = ?", (user_id,))
         
         row = c.fetchone()
         
         if row:
-            try:
-                return jsonify({
-                    "created_at": row['created_at'],
-                    "is_admin": bool(row['is_admin']),
-                    "is_banned": bool(row['is_banned']),
-                    "role": row['role'] or 'user',
-                    "name": row.get('name') or session.get('user_name'),
-                    "session_admin": session.get('is_admin', False)
-                })
-            except (TypeError, KeyError):
-                return jsonify({
-                    "created_at": row[0],
-                    "is_admin": bool(row[1]),
-                    "is_banned": bool(row[2]),
-                    "role": row[3] if row[3] else 'user',
-                    "name": row[4] if len(row) > 4 else session.get('user_name'),
-                    "session_admin": session.get('is_admin', False)
-                })
+            if isinstance(row, dict) or hasattr(row, 'keys'):
+                created_at_val = row['created_at']
+                is_admin_val = bool(row['is_admin'])
+                is_banned_val = bool(row['is_banned'])
+                role_val = row['role'] or 'user'
+                name_val = row['name'] or session.get('user_name')
+            else:
+                created_at_val = row[0]
+                is_admin_val = bool(row[1])
+                is_banned_val = bool(row[2])
+                role_val = row[3] if row[3] else 'user'
+                name_val = row[4] if len(row) > 4 else session.get('user_name')
+
+            if not created_at_val:
+                earliest = find_earliest_activity()
+                if earliest:
+                    created_at_val = earliest.isoformat()
+                    try:
+                        if db_type == 'postgres':
+                            c.execute("UPDATE users SET created_at = %s WHERE id = %s", (created_at_val, user_id))
+                        else:
+                            c.execute("UPDATE users SET created_at = ? WHERE id = ?", (created_at_val, user_id))
+                        conn.commit()
+                    except Exception:
+                        conn.rollback()
+
+            return jsonify({
+                "created_at": created_at_val,
+                "is_admin": is_admin_val,
+                "is_banned": is_banned_val,
+                "role": role_val,
+                "name": name_val,
+                "session_admin": session.get('is_admin', False)
+            })
         return jsonify({"created_at": None, "is_admin": False, "is_banned": False, "role": "user", "name": session.get('user_name')})
     except Exception as e:
         logger.error(f"User info error: {e}")
@@ -3142,6 +3241,7 @@ def get_comments(verse_id):
 
 def check_comment_restriction(user_id):
     """Check if user is restricted from commenting. Returns (is_restricted, reason, expires_at)"""
+    global RESTRICTION_SCHEMA_READY
     try:
         logger.info(f"[DEBUG] check_comment_restriction called for user_id={user_id}")
         
@@ -3150,30 +3250,32 @@ def check_comment_restriction(user_id):
         
         logger.info(f"[DEBUG] db_type={db_type}")
         
-        # Ensure table exists with appropriate syntax
-        if db_type == 'postgres':
-            c.execute("""
-                CREATE TABLE IF NOT EXISTS comment_restrictions (
-                    id SERIAL PRIMARY KEY,
-                    user_id INTEGER UNIQUE,
-                    reason TEXT,
-                    restricted_by TEXT,
-                    restricted_at TIMESTAMP,
-                    expires_at TIMESTAMP
-                )
-            """)
-        else:
-            c.execute("""
-                CREATE TABLE IF NOT EXISTS comment_restrictions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER UNIQUE,
-                    reason TEXT,
-                    restricted_by TEXT,
-                    restricted_at TIMESTAMP,
-                    expires_at TIMESTAMP
-                )
-            """)
-        conn.commit()
+        if not RESTRICTION_SCHEMA_READY:
+            # Ensure table exists with appropriate syntax (once per process)
+            if db_type == 'postgres':
+                c.execute("""
+                    CREATE TABLE IF NOT EXISTS comment_restrictions (
+                        id SERIAL PRIMARY KEY,
+                        user_id INTEGER UNIQUE,
+                        reason TEXT,
+                        restricted_by TEXT,
+                        restricted_at TIMESTAMP,
+                        expires_at TIMESTAMP
+                    )
+                """)
+            else:
+                c.execute("""
+                    CREATE TABLE IF NOT EXISTS comment_restrictions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER UNIQUE,
+                        reason TEXT,
+                        restricted_by TEXT,
+                        restricted_at TIMESTAMP,
+                        expires_at TIMESTAMP
+                    )
+                """)
+            conn.commit()
+            RESTRICTION_SCHEMA_READY = True
         
         # Check for active restriction
         now = datetime.now().isoformat()

@@ -983,24 +983,6 @@
                 </div>
             </div>
 
-            <div class="panel">
-                <div class="panel-title">&#128202; Growth & Retention</div>
-                <div class="chart-grid">
-                    <div class="chart-card">
-                        <div class="chart-title">Daily Active Users</div>
-                        <div class="spark-bars" id="dauBars"></div>
-                    </div>
-                    <div class="chart-card">
-                        <div class="chart-title">User Growth</div>
-                        <div class="spark-bars" id="growthBars"></div>
-                    </div>
-                </div>
-                <div class="admin-form-grid" style="margin-top:16px;">
-                    <div class="mini-item"><strong>Retention D1:</strong> <span id="retentionD1">0%</span></div>
-                    <div class="mini-item"><strong>Retention D7:</strong> <span id="retentionD7">0%</span></div>
-                    <div class="mini-item"><strong>Retention D30:</strong> <span id="retentionD30">0%</span></div>
-                </div>
-            </div>
 
             <div class="panel">
                 <div class="panel-title">&#128226; Admin Broadcast Tools</div>
@@ -1409,14 +1391,22 @@
                 const data = await res.json();
                 if (data.error) return;
                 insightsData = data;
-                document.getElementById('statActiveNow').textContent = data.active_users_now ?? 0;
-                document.getElementById('statConversion').textContent = `${Number(data.conversion_rate || 0).toFixed(2)}%`;
-                document.getElementById('statRevenue').textContent = moneyFromCents(data.revenue_cents || 0);
-                document.getElementById('retentionD1').textContent = `${Number(data.retention?.day_1 || 0).toFixed(2)}%`;
-                document.getElementById('retentionD7').textContent = `${Number(data.retention?.day_7 || 0).toFixed(2)}%`;
-                document.getElementById('retentionD30').textContent = `${Number(data.retention?.day_30 || 0).toFixed(2)}%`;
-                document.getElementById('scheduledCount').textContent = data.announcements_scheduled ?? 0;
-                document.getElementById('sentCount').textContent = data.announcements_sent ?? 0;
+                const activeNowEl = document.getElementById('statActiveNow');
+                if (activeNowEl) activeNowEl.textContent = data.active_users_now ?? 0;
+                const conversionEl = document.getElementById('statConversion');
+                if (conversionEl) conversionEl.textContent = `${Number(data.conversion_rate || 0).toFixed(2)}%`;
+                const revenueEl = document.getElementById('statRevenue');
+                if (revenueEl) revenueEl.textContent = moneyFromCents(data.revenue_cents || 0);
+                const retentionD1 = document.getElementById('retentionD1');
+                if (retentionD1) retentionD1.textContent = `${Number(data.retention?.day_1 || 0).toFixed(2)}%`;
+                const retentionD7 = document.getElementById('retentionD7');
+                if (retentionD7) retentionD7.textContent = `${Number(data.retention?.day_7 || 0).toFixed(2)}%`;
+                const retentionD30 = document.getElementById('retentionD30');
+                if (retentionD30) retentionD30.textContent = `${Number(data.retention?.day_30 || 0).toFixed(2)}%`;
+                const scheduledEl = document.getElementById('scheduledCount');
+                if (scheduledEl) scheduledEl.textContent = data.announcements_scheduled ?? 0;
+                const sentEl = document.getElementById('sentCount');
+                if (sentEl) sentEl.textContent = data.announcements_sent ?? 0;
 
                 renderSparkBars('dauBars', data.daily_active_users || []);
                 renderSparkBars('growthBars', data.user_growth || []);

@@ -435,16 +435,21 @@
             color: #f5f7ff;
         }
 
-        body.noir-mode .tab-view.active {
-            animation: noirRise 0.8s ease both;
+        body.noir-mode:not(.no-animations) .tab-view.active {
+            animation: noirRise 0.8s ease;
         }
-        body.noir-mode .tab-view.active > * { animation: noirRise 0.75s ease both; }
-        body.noir-mode .tab-view.active > *:nth-child(1) { animation-delay: 0.04s; }
-        body.noir-mode .tab-view.active > *:nth-child(2) { animation-delay: 0.08s; }
-        body.noir-mode .tab-view.active > *:nth-child(3) { animation-delay: 0.12s; }
-        body.noir-mode .tab-view.active > *:nth-child(4) { animation-delay: 0.16s; }
-        body.noir-mode .tab-view.active > *:nth-child(5) { animation-delay: 0.2s; }
-        body.noir-mode .tab-view.active > *:nth-child(6) { animation-delay: 0.24s; }
+        body.noir-mode:not(.no-animations) .tab-view.active > * { animation: noirRise 0.75s ease; }
+        body.noir-mode .tab-view.active > * {
+            opacity: 1;
+            transform: none;
+            filter: none;
+        }
+        body.noir-mode:not(.no-animations) .tab-view.active > *:nth-child(1) { animation-delay: 0.04s; }
+        body.noir-mode:not(.no-animations) .tab-view.active > *:nth-child(2) { animation-delay: 0.08s; }
+        body.noir-mode:not(.no-animations) .tab-view.active > *:nth-child(3) { animation-delay: 0.12s; }
+        body.noir-mode:not(.no-animations) .tab-view.active > *:nth-child(4) { animation-delay: 0.16s; }
+        body.noir-mode:not(.no-animations) .tab-view.active > *:nth-child(5) { animation-delay: 0.2s; }
+        body.noir-mode:not(.no-animations) .tab-view.active > *:nth-child(6) { animation-delay: 0.24s; }
 
         body.noir-mode .daily-challenge {
             border: 1px solid rgba(255,255,255,0.1);
@@ -3710,11 +3715,11 @@
             </div>
 
             <!-- PROFILE TAB -->
-            <div id="profile" class="tab-view">
+            <div id="profile" class="tab-view" data-created-at="{{ user.created_at }}" data-user-name="{{ user.name }}" data-user-email="{{ user.email }}" data-user-picture="{{ user.picture }}">
                 <div class="glass-card" style="text-align: center; padding: 32px;">
-                    <img src="{{ user.picture }}" style="width: 90px; height: 90px; border-radius: 50%; margin-bottom: 16px; border: 3px solid var(--primary); box-shadow: 0 8px 24px var(--primary-glow);">
+                    <img id="profileAvatar" src="{{ user.picture }}" style="width: 90px; height: 90px; border-radius: 50%; margin-bottom: 16px; border: 3px solid var(--primary); box-shadow: 0 8px 24px var(--primary-glow);">
                     <div id="profileUserName" style="font-size: 24px; font-weight: 700; margin-bottom: 4px;">{{ user.name }}</div>
-                    <div style="font-size: 14px; opacity: 0.6;">{{ user.email }}</div>
+                    <div id="profileEmail" style="font-size: 14px; opacity: 0.6;">{{ user.email }}</div>
                     <div id="roleTag" style="display: none; margin-top: 8px; font-weight: 700; font-size: 14px; text-transform: uppercase;"></div>
                 </div>
 
@@ -5711,22 +5716,48 @@
         }
 
         async function loadProfileStats() {
-            const res = await fetch('/api/stats');
-            const data = await res.json();
-            document.getElementById('statVerses').textContent = data.total_verses;
-            document.getElementById('statLiked').textContent = data.liked;
-            document.getElementById('statSaved').textContent = data.saved;
-            document.getElementById('statComments').textContent = data.comments;
+            let stats = null;
+            try {
+                const res = await fetch('/api/stats');
+                if (res.ok) {
+                    stats = await res.json();
+                }
+            } catch (_) {}
+
+            const safeStats = stats || { total_verses: 0, liked: 0, saved: 0, comments: 0, replies: 0 };
+            document.getElementById('statVerses').textContent = safeStats.total_verses ?? 0;
+            document.getElementById('statLiked').textContent = safeStats.liked ?? 0;
+            document.getElementById('statSaved').textContent = safeStats.saved ?? 0;
+            document.getElementById('statComments').textContent = safeStats.comments ?? 0;
             if (document.getElementById('statReplies')) {
-                document.getElementById('statReplies').textContent = data.replies || 0;
+                document.getElementById('statReplies').textContent = safeStats.replies || 0;
             }
             
-            const userRes = await fetch('/api/user_info');
-            const userData = await userRes.json();
+            let userData = {};
+            try {
+                const userRes = await fetch('/api/user_info');
+                if (userRes.ok) {
+                    userData = await userRes.json();
+                }
+            } catch (_) {}
+            const profileEl = document.getElementById('profile');
+            const fallbackCreated = profileEl?.dataset?.createdAt || '';
+            const fallbackName = profileEl?.dataset?.userName || '';
+            const fallbackEmail = profileEl?.dataset?.userEmail || '';
+            const fallbackPicture = profileEl?.dataset?.userPicture || '';
+            const effectiveName = userData.name || fallbackName || 'User';
+            const effectiveEmail = userData.email || fallbackEmail || '';
+            const effectivePicture = userData.picture || fallbackPicture || '';
+            const nameEl = document.getElementById('profileUserName');
+            if (nameEl) nameEl.textContent = effectiveName;
+            const emailEl = document.getElementById('profileEmail');
+            if (emailEl) emailEl.textContent = effectiveEmail;
+            const avatarEl = document.getElementById('profileAvatar');
+            if (avatarEl && effectivePicture) avatarEl.src = effectivePicture;
             
             const memberEl = document.getElementById('memberSince');
             if (memberEl) {
-                const date = parseCreatedAt(userData.created_at);
+                const date = parseCreatedAt(userData.created_at || fallbackCreated);
                 memberEl.textContent = date ? date.toLocaleDateString() : '—';
             }
 
@@ -5744,7 +5775,7 @@
             
             // Load new profile features
             loadStreak();
-            loadAchievements(data);
+            loadAchievements(safeStats);
             loadFavoriteBooks();
             loadVerseHistory();
             updateXpDisplay();

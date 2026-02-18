@@ -203,6 +203,58 @@ def _ensure_admin_feature_tables(conn, c, db_type):
         """)
     conn.commit()
 
+def _ensure_daily_actions_schema(c, db_type):
+    cols = _get_table_columns(c, db_type, 'daily_actions')
+    if cols:
+        if db_type == 'postgres':
+            if 'user_id' not in cols:
+                c.execute("ALTER TABLE daily_actions ADD COLUMN IF NOT EXISTS user_id INTEGER")
+            if 'action' not in cols:
+                c.execute("ALTER TABLE daily_actions ADD COLUMN IF NOT EXISTS action TEXT")
+            if 'verse_id' not in cols:
+                c.execute("ALTER TABLE daily_actions ADD COLUMN IF NOT EXISTS verse_id INTEGER")
+            if 'event_date' not in cols:
+                c.execute("ALTER TABLE daily_actions ADD COLUMN IF NOT EXISTS event_date TEXT")
+            if 'timestamp' not in cols:
+                c.execute("ALTER TABLE daily_actions ADD COLUMN IF NOT EXISTS timestamp TEXT")
+        else:
+            if 'user_id' not in cols:
+                c.execute("ALTER TABLE daily_actions ADD COLUMN user_id INTEGER")
+            if 'action' not in cols:
+                c.execute("ALTER TABLE daily_actions ADD COLUMN action TEXT")
+            if 'verse_id' not in cols:
+                c.execute("ALTER TABLE daily_actions ADD COLUMN verse_id INTEGER")
+            if 'event_date' not in cols:
+                c.execute("ALTER TABLE daily_actions ADD COLUMN event_date TEXT")
+            if 'timestamp' not in cols:
+                c.execute("ALTER TABLE daily_actions ADD COLUMN timestamp TEXT")
+        return
+
+    if db_type == 'postgres':
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS daily_actions (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER,
+                action TEXT,
+                verse_id INTEGER,
+                event_date TEXT,
+                timestamp TEXT,
+                UNIQUE(user_id, action, verse_id, event_date)
+            )
+        """)
+    else:
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS daily_actions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                action TEXT,
+                verse_id INTEGER,
+                event_date TEXT,
+                timestamp TEXT,
+                UNIQUE(user_id, action, verse_id, event_date)
+            )
+        """)
+
 def _get_table_columns(c, db_type, table_name):
     """Return lowercase column names for a table."""
     cols = set()
@@ -1900,6 +1952,7 @@ def get_admin_insights():
         conn, db_type = get_db()
         c = conn.cursor()
         _ensure_admin_feature_tables(conn, c, db_type)
+        _ensure_daily_actions_schema(c, db_type)
         if db_type == 'postgres':
             c.execute("CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, google_id TEXT UNIQUE, email TEXT, name TEXT, picture TEXT, created_at TEXT, is_admin INTEGER DEFAULT 0, is_banned BOOLEAN DEFAULT FALSE, ban_expires_at TIMESTAMP, ban_reason TEXT, role TEXT DEFAULT 'user')")
             c.execute("CREATE TABLE IF NOT EXISTS likes (id SERIAL PRIMARY KEY, user_id INTEGER, verse_id INTEGER, timestamp TEXT, UNIQUE(user_id, verse_id))")
@@ -1998,6 +2051,7 @@ def get_admin_insights():
         c.execute("""
             SELECT event_date, COUNT(DISTINCT user_id) AS cnt
             FROM daily_actions
+            WHERE user_id IS NOT NULL
             GROUP BY event_date
             ORDER BY event_date DESC
             LIMIT 14
@@ -2025,9 +2079,9 @@ def get_admin_insights():
         growth_series = [{"date": d, "count": growth_counter[d]} for d in growth_dates]
 
         # Retention windows from daily_actions activity.
-        c.execute("SELECT user_id, created_at FROM users")
+        c.execute("SELECT id, created_at FROM users")
         all_user_rows = c.fetchall()
-        c.execute("SELECT user_id, timestamp FROM daily_actions")
+        c.execute("SELECT user_id, timestamp FROM daily_actions WHERE user_id IS NOT NULL")
         action_rows = c.fetchall()
         active_1d = set()
         active_7d = set()
@@ -2083,6 +2137,7 @@ def get_admin_insights():
             SELECT da.user_id, COUNT(*) AS cnt, u.name, u.email
             FROM daily_actions da
             LEFT JOIN users u ON u.id = da.user_id
+            WHERE da.user_id IS NOT NULL
             GROUP BY da.user_id, u.name, u.email
             ORDER BY cnt DESC
             LIMIT 8
@@ -2110,6 +2165,7 @@ def get_admin_insights():
         c.execute("""
             SELECT action, COUNT(*) AS cnt
             FROM daily_actions
+            WHERE action IS NOT NULL
             GROUP BY action
             ORDER BY cnt DESC
             LIMIT 10
@@ -2207,6 +2263,133 @@ def list_announcements():
         print(f"[ERROR] List announcements: {e}")
         if conn:
             try:
+                conn.close()
+            except:
+                pass
+        return jsonify({"error": str(e)}), 500
+
+@admin_bp.route('/api/announcements/<int:announcement_id>', methods=['DELETE'])
+@admin_required
+@require_permission('view_audit')
+def delete_announcement(announcement_id):
+    conn = None
+    try:
+        conn, db_type = get_db()
+        c = conn.cursor()
+        _ensure_admin_feature_tables(conn, c, db_type)
+        if db_type == 'postgres':
+            c.execute("DELETE FROM admin_announcements WHERE id = %s", (announcement_id,))
+        else:
+            c.execute("DELETE FROM admin_announcements WHERE id = ?", (announcement_id,))
+        conn.commit()
+        conn.close()
+        log_action("DELETE_ANNOUNCEMENT", f"Deleted announcement #{announcement_id}", status="success")
+        return jsonify({"success": True})
+    except Exception as e:
+        print(f"[ERROR] Delete announcement: {e}")
+        if conn:
+            try:
+                conn.rollback()
+                conn.close()
+            except:
+                pass
+        return jsonify({"error": str(e)}), 500
+
+@admin_bp.route('/api/notifications', methods=['GET'])
+@admin_required
+@require_permission('view_audit')
+def list_notifications():
+    conn = None
+    try:
+        notif_type = (request.args.get('type') or 'all').strip().lower()
+        conn, db_type = get_db()
+        c = conn.cursor()
+        _ensure_admin_feature_tables(conn, c, db_type)
+        if notif_type != 'all':
+            if db_type == 'postgres':
+                c.execute("""
+                    SELECT id, user_id, title, message, notif_type, source, is_read, created_at, sent_at
+                    FROM user_notifications
+                    WHERE LOWER(notif_type) = %s
+                    ORDER BY created_at DESC
+                    LIMIT 200
+                """, (notif_type,))
+            else:
+                c.execute("""
+                    SELECT id, user_id, title, message, notif_type, source, is_read, created_at, sent_at
+                    FROM user_notifications
+                    WHERE LOWER(notif_type) = ?
+                    ORDER BY created_at DESC
+                    LIMIT 200
+                """, (notif_type,))
+        else:
+            c.execute("""
+                SELECT id, user_id, title, message, notif_type, source, is_read, created_at, sent_at
+                FROM user_notifications
+                ORDER BY created_at DESC
+                LIMIT 200
+            """)
+        rows = c.fetchall()
+        conn.close()
+        out = []
+        for row in rows:
+            row = _row_to_dict(row)
+            if hasattr(row, 'keys'):
+                out.append({
+                    "id": row.get('id'),
+                    "user_id": row.get('user_id'),
+                    "title": row.get('title') or '',
+                    "message": row.get('message') or '',
+                    "notif_type": row.get('notif_type') or '',
+                    "source": row.get('source') or '',
+                    "is_read": bool(row.get('is_read') or 0),
+                    "created_at": row.get('created_at'),
+                    "sent_at": row.get('sent_at')
+                })
+            else:
+                out.append({
+                    "id": row[0],
+                    "user_id": row[1],
+                    "title": row[2] or '',
+                    "message": row[3] or '',
+                    "notif_type": row[4] or '',
+                    "source": row[5] or '',
+                    "is_read": bool(row[6] or 0),
+                    "created_at": row[7],
+                    "sent_at": row[8] if len(row) > 8 else None
+                })
+        return jsonify(out)
+    except Exception as e:
+        print(f"[ERROR] List notifications: {e}")
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
+        return jsonify({"error": str(e)}), 500
+
+@admin_bp.route('/api/notifications/<int:notification_id>', methods=['DELETE'])
+@admin_required
+@require_permission('view_audit')
+def delete_notification(notification_id):
+    conn = None
+    try:
+        conn, db_type = get_db()
+        c = conn.cursor()
+        _ensure_admin_feature_tables(conn, c, db_type)
+        if db_type == 'postgres':
+            c.execute("DELETE FROM user_notifications WHERE id = %s", (notification_id,))
+        else:
+            c.execute("DELETE FROM user_notifications WHERE id = ?", (notification_id,))
+        conn.commit()
+        conn.close()
+        log_action("DELETE_NOTIFICATION", f"Deleted notification #{notification_id}", status="success")
+        return jsonify({"success": True})
+    except Exception as e:
+        print(f"[ERROR] Delete notification: {e}")
+        if conn:
+            try:
+                conn.rollback()
                 conn.close()
             except:
                 pass

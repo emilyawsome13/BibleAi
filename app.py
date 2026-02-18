@@ -70,6 +70,9 @@ if DATABASE_URL and DATABASE_URL.startswith('postgres://'):
     DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
 
 IS_POSTGRES = DATABASE_URL and ('postgresql' in DATABASE_URL or 'postgres' in DATABASE_URL)
+POSTGRES_AVAILABLE = True
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+SQLITE_PATH = os.path.join(BASE_DIR, 'bible_ios.db')
 BOOK_TEXT_CACHE = {}
 BOOK_META_CACHE = {}
 BAN_SCHEMA_READY = False
@@ -155,7 +158,8 @@ def get_public_url():
 
 def get_db():
     """Get database connection - PostgreSQL for Render, SQLite for local"""
-    if IS_POSTGRES:
+    global POSTGRES_AVAILABLE
+    if IS_POSTGRES and POSTGRES_AVAILABLE:
         try:
             import psycopg2
             import psycopg2.extras
@@ -163,17 +167,18 @@ def get_db():
             return conn, 'postgres'
         except ImportError:
             logger.warning("psycopg2 not installed, falling back to SQLite")
-            conn = sqlite3.connect('bible_ios.db', timeout=20)
+            conn = sqlite3.connect(SQLITE_PATH, timeout=20)
             conn.row_factory = sqlite3.Row
             return conn, 'sqlite'
         except Exception as e:
             logger.error(f"PostgreSQL connection failed: {e}")
+            POSTGRES_AVAILABLE = False
             # Fallback to SQLite if Postgres fails
-            conn = sqlite3.connect('bible_ios.db', timeout=20)
+            conn = sqlite3.connect(SQLITE_PATH, timeout=20)
             conn.row_factory = sqlite3.Row
             return conn, 'sqlite'
     else:
-        conn = sqlite3.connect('bible_ios.db', timeout=20)
+        conn = sqlite3.connect(SQLITE_PATH, timeout=20)
         conn.row_factory = sqlite3.Row
         return conn, 'sqlite'
 
@@ -2649,11 +2654,13 @@ def like_verse():
     
     data = request.get_json()
     verse_id = data.get('verse_id')
+    verse_payload = data.get('verse') if isinstance(data, dict) else None
     
     conn, db_type = get_db()
     c = get_cursor(conn, db_type)
     
     try:
+        verse_id = ensure_verse_id(c, db_type, verse_id, verse_payload)
         if db_type == 'postgres':
             c.execute("SELECT id FROM likes WHERE user_id = %s AND verse_id = %s", (session['user_id'], verse_id))
             if c.fetchone():
@@ -2700,11 +2707,13 @@ def save_verse():
     
     data = request.get_json()
     verse_id = data.get('verse_id')
+    verse_payload = data.get('verse') if isinstance(data, dict) else None
     
     conn, db_type = get_db()
     c = get_cursor(conn, db_type)
     
     try:
+        verse_id = ensure_verse_id(c, db_type, verse_id, verse_payload)
         now = datetime.now().isoformat()
         period_key = get_challenge_period_key()
         if db_type == 'postgres':
@@ -3090,6 +3099,64 @@ def get_mood_recommendation(mood):
         return jsonify({"error": str(e)}), 500
     finally:
         conn.close()
+
+def ensure_verse_id(c, db_type, verse_id, verse_payload=None):
+    """Ensure a verse exists in DB and return a valid verse_id."""
+    try:
+        if verse_id:
+            if db_type == 'postgres':
+                c.execute("SELECT id FROM verses WHERE id = %s", (verse_id,))
+            else:
+                c.execute("SELECT id FROM verses WHERE id = ?", (verse_id,))
+            row = c.fetchone()
+            if row:
+                return row['id'] if hasattr(row, 'keys') else row[0]
+    except Exception:
+        pass
+
+    if not verse_payload:
+        return verse_id
+
+    ref = (verse_payload.get('reference') or verse_payload.get('ref') or '').strip()
+    text = (verse_payload.get('text') or '').strip()
+    if not ref or not text:
+        return verse_id
+
+    trans = (verse_payload.get('translation') or verse_payload.get('trans') or '').strip()
+    source = (verse_payload.get('source') or '').strip()
+    book = (verse_payload.get('book') or '').strip()
+    now = datetime.now().isoformat()
+
+    try:
+        if db_type == 'postgres':
+            c.execute("SELECT id FROM verses WHERE reference = %s AND text = %s", (ref, text))
+        else:
+            c.execute("SELECT id FROM verses WHERE reference = ? AND text = ?", (ref, text))
+        row = c.fetchone()
+        if row:
+            return row['id'] if hasattr(row, 'keys') else row[0]
+    except Exception:
+        pass
+
+    try:
+        if db_type == 'postgres':
+            c.execute("""
+                INSERT INTO verses (reference, text, translation, source, timestamp, book)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (ref, text, trans, source, now, book))
+            c.execute("SELECT id FROM verses WHERE reference = %s AND text = %s", (ref, text))
+        else:
+            c.execute("""
+                INSERT INTO verses (reference, text, translation, source, timestamp, book)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (ref, text, trans, source, now, book))
+            c.execute("SELECT id FROM verses WHERE reference = ? AND text = ?", (ref, text))
+        row = c.fetchone()
+        if row:
+            return row['id'] if hasattr(row, 'keys') else row[0]
+    except Exception:
+        pass
+    return verse_id
 
 @app.route('/api/generate-recommendation', methods=['POST'])
 def generate_rec():

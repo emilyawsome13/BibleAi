@@ -228,6 +228,25 @@ def _get_table_columns(c, db_type, table_name):
         print(f"[WARN] Could not read columns for {table_name}: {e}")
     return cols
 
+def _row_first_value(row, default=0):
+    if row is None:
+        return default
+    if isinstance(row, dict):
+        return next(iter(row.values()), default)
+    if hasattr(row, 'keys'):
+        try:
+            return row[0]
+        except Exception:
+            try:
+                keys = row.keys()
+                return row[keys[0]] if keys else default
+            except Exception:
+                return default
+    try:
+        return row[0]
+    except Exception:
+        return default
+
 def _ensure_audit_logs_schema(conn, c, db_type):
     """Create/migrate audit_logs so queries work across older DB schemas."""
     if db_type == 'postgres':
@@ -486,7 +505,7 @@ def _read_audit_logs(c, db_type, limit=100, offset=0, action=None):
     count_query = f"SELECT COUNT(*) FROM audit_logs {where_sql}"
     c.execute(count_query, tuple(params))
     total_row = c.fetchone()
-    total = (total_row[0] if not hasattr(total_row, 'keys') else list(total_row.values())[0]) if total_row else 0
+    total = int(_row_first_value(total_row, 0) or 0)
 
     limit_ph = "%s" if db_type == 'postgres' else "?"
     offset_ph = "%s" if db_type == 'postgres' else "?"
@@ -706,11 +725,18 @@ def get_stats():
                 row = c.fetchone()
                 if row is None:
                     return 0
-                # Handle both dict-like and tuple-like rows
-                if hasattr(row, 'keys'):
+                # Handle dict-like, sqlite3.Row, and tuple-like rows
+                if isinstance(row, dict):
                     return row.get('count', 0) or 0
-                else:
-                    return row[0] or 0
+                if hasattr(row, 'keys'):
+                    try:
+                        return row['count'] or 0
+                    except Exception:
+                        try:
+                            return row[0] or 0
+                        except Exception:
+                            return 0
+                return row[0] or 0
             except Exception as e:
                 print(f"[DEBUG] Query failed: {query}, error: {e}")
                 return 0
@@ -720,9 +746,25 @@ def get_stats():
             if db_type == 'postgres':
                 c.execute("CREATE TABLE IF NOT EXISTS bans (id SERIAL PRIMARY KEY, user_id INTEGER UNIQUE, reason TEXT, banned_by TEXT, banned_at TIMESTAMP, expires_at TIMESTAMP)")
                 c.execute("CREATE TABLE IF NOT EXISTS comment_restrictions (id SERIAL PRIMARY KEY, user_id INTEGER UNIQUE, reason TEXT, restricted_by TEXT, restricted_at TIMESTAMP, expires_at TIMESTAMP)")
+                c.execute("CREATE TABLE IF NOT EXISTS verses (id SERIAL PRIMARY KEY, reference TEXT, text TEXT, translation TEXT, source TEXT, timestamp TEXT, book TEXT)")
+                c.execute("CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, google_id TEXT UNIQUE, email TEXT, name TEXT, picture TEXT, created_at TEXT, is_admin INTEGER DEFAULT 0, is_banned BOOLEAN DEFAULT FALSE, ban_expires_at TIMESTAMP, ban_reason TEXT, role TEXT DEFAULT 'user')")
+                c.execute("CREATE TABLE IF NOT EXISTS likes (id SERIAL PRIMARY KEY, user_id INTEGER, verse_id INTEGER, timestamp TEXT, UNIQUE(user_id, verse_id))")
+                c.execute("CREATE TABLE IF NOT EXISTS saves (id SERIAL PRIMARY KEY, user_id INTEGER, verse_id INTEGER, timestamp TEXT, UNIQUE(user_id, verse_id))")
+                c.execute("CREATE TABLE IF NOT EXISTS comments (id SERIAL PRIMARY KEY, user_id INTEGER, verse_id INTEGER, text TEXT, timestamp TEXT, google_name TEXT, google_picture TEXT, is_deleted INTEGER DEFAULT 0)")
+                c.execute("CREATE TABLE IF NOT EXISTS community_messages (id SERIAL PRIMARY KEY, user_id INTEGER, text TEXT, timestamp TEXT, google_name TEXT, google_picture TEXT)")
+                c.execute("CREATE TABLE IF NOT EXISTS comment_replies (id SERIAL PRIMARY KEY, parent_type TEXT NOT NULL, parent_id INTEGER NOT NULL, user_id INTEGER NOT NULL, text TEXT NOT NULL, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP, google_name TEXT, google_picture TEXT, is_deleted INTEGER DEFAULT 0)")
+                c.execute("CREATE TABLE IF NOT EXISTS daily_actions (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL, action TEXT NOT NULL, verse_id INTEGER, event_date TEXT NOT NULL, timestamp TEXT)")
             else:
                 c.execute("CREATE TABLE IF NOT EXISTS bans (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER UNIQUE, reason TEXT, banned_by TEXT, banned_at TIMESTAMP, expires_at TIMESTAMP)")
                 c.execute("CREATE TABLE IF NOT EXISTS comment_restrictions (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER UNIQUE, reason TEXT, restricted_by TEXT, restricted_at TIMESTAMP, expires_at TIMESTAMP)")
+                c.execute("CREATE TABLE IF NOT EXISTS verses (id INTEGER PRIMARY KEY AUTOINCREMENT, reference TEXT, text TEXT, translation TEXT, source TEXT, timestamp TEXT, book TEXT)")
+                c.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, google_id TEXT UNIQUE, email TEXT, name TEXT, picture TEXT, created_at TEXT, is_admin INTEGER DEFAULT 0, is_banned INTEGER DEFAULT 0, ban_expires_at TEXT, ban_reason TEXT, role TEXT DEFAULT 'user')")
+                c.execute("CREATE TABLE IF NOT EXISTS likes (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, verse_id INTEGER, timestamp TEXT, UNIQUE(user_id, verse_id))")
+                c.execute("CREATE TABLE IF NOT EXISTS saves (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, verse_id INTEGER, timestamp TEXT, UNIQUE(user_id, verse_id))")
+                c.execute("CREATE TABLE IF NOT EXISTS comments (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, verse_id INTEGER, text TEXT, timestamp TEXT, google_name TEXT, google_picture TEXT, is_deleted INTEGER DEFAULT 0)")
+                c.execute("CREATE TABLE IF NOT EXISTS community_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, text TEXT, timestamp TEXT, google_name TEXT, google_picture TEXT)")
+                c.execute("CREATE TABLE IF NOT EXISTS comment_replies (id INTEGER PRIMARY KEY AUTOINCREMENT, parent_type TEXT NOT NULL, parent_id INTEGER NOT NULL, user_id INTEGER NOT NULL, text TEXT NOT NULL, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP, google_name TEXT, google_picture TEXT, is_deleted INTEGER DEFAULT 0)")
+                c.execute("CREATE TABLE IF NOT EXISTS daily_actions (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, action TEXT NOT NULL, verse_id INTEGER, event_date TEXT NOT NULL, timestamp TEXT)")
             conn.commit()
         except Exception as e:
             print(f"[DEBUG] Table creation warning: {e}")
@@ -1832,6 +1874,16 @@ def get_admin_insights():
         conn, db_type = get_db()
         c = conn.cursor()
         _ensure_admin_feature_tables(conn, c, db_type)
+        if db_type == 'postgres':
+            c.execute("CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, google_id TEXT UNIQUE, email TEXT, name TEXT, picture TEXT, created_at TEXT, is_admin INTEGER DEFAULT 0, is_banned BOOLEAN DEFAULT FALSE, ban_expires_at TIMESTAMP, ban_reason TEXT, role TEXT DEFAULT 'user')")
+            c.execute("CREATE TABLE IF NOT EXISTS likes (id SERIAL PRIMARY KEY, user_id INTEGER, verse_id INTEGER, timestamp TEXT, UNIQUE(user_id, verse_id))")
+            c.execute("CREATE TABLE IF NOT EXISTS saves (id SERIAL PRIMARY KEY, user_id INTEGER, verse_id INTEGER, timestamp TEXT, UNIQUE(user_id, verse_id))")
+            c.execute("CREATE TABLE IF NOT EXISTS daily_actions (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL, action TEXT NOT NULL, verse_id INTEGER, event_date TEXT NOT NULL, timestamp TEXT)")
+        else:
+            c.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, google_id TEXT UNIQUE, email TEXT, name TEXT, picture TEXT, created_at TEXT, is_admin INTEGER DEFAULT 0, is_banned INTEGER DEFAULT 0, ban_expires_at TEXT, ban_reason TEXT, role TEXT DEFAULT 'user')")
+            c.execute("CREATE TABLE IF NOT EXISTS likes (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, verse_id INTEGER, timestamp TEXT, UNIQUE(user_id, verse_id))")
+            c.execute("CREATE TABLE IF NOT EXISTS saves (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, verse_id INTEGER, timestamp TEXT, UNIQUE(user_id, verse_id))")
+            c.execute("CREATE TABLE IF NOT EXISTS daily_actions (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, action TEXT NOT NULL, verse_id INTEGER, event_date TEXT NOT NULL, timestamp TEXT)")
         c.execute("""
             CREATE TABLE IF NOT EXISTS system_settings (
                 key TEXT PRIMARY KEY,
@@ -1839,28 +1891,6 @@ def get_admin_insights():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        if db_type == 'postgres':
-            c.execute("""
-                CREATE TABLE IF NOT EXISTS daily_actions (
-                    id SERIAL PRIMARY KEY,
-                    user_id INTEGER NOT NULL,
-                    action TEXT NOT NULL,
-                    verse_id INTEGER,
-                    event_date TEXT NOT NULL,
-                    timestamp TEXT
-                )
-            """)
-        else:
-            c.execute("""
-                CREATE TABLE IF NOT EXISTS daily_actions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    action TEXT NOT NULL,
-                    verse_id INTEGER,
-                    event_date TEXT NOT NULL,
-                    timestamp TEXT
-                )
-            """)
 
         now = datetime.now()
         active_cutoff = now - timedelta(minutes=5)
@@ -1923,7 +1953,7 @@ def get_admin_insights():
         # Total users.
         c.execute("SELECT COUNT(*) FROM users")
         total_users_row = c.fetchone()
-        total_users = int(total_users_row[0] if not hasattr(total_users_row, 'keys') else list(total_users_row.values())[0] or 0)
+        total_users = int(_row_first_value(total_users_row, 0) or 0)
 
         # Daily active users (from daily_actions table).
         c.execute("""
@@ -2002,7 +2032,7 @@ def get_admin_insights():
             ) t
         """)
         conv_row = c.fetchone()
-        converted_users = int(conv_row[0] if not hasattr(conv_row, 'keys') else list(conv_row.values())[0] or 0)
+        converted_users = int(_row_first_value(conv_row, 0) or 0)
         conversion_rate = round((converted_users / total_users) * 100, 2) if total_users else 0
 
         # Top active users by actions.
@@ -2051,15 +2081,15 @@ def get_admin_insights():
         # Revenue (if donation events are being inserted externally).
         c.execute("SELECT COALESCE(SUM(amount_cents), 0) FROM donation_events WHERE status = 'paid'")
         rev_row = c.fetchone()
-        revenue_cents = int(rev_row[0] if not hasattr(rev_row, 'keys') else list(rev_row.values())[0] or 0)
+        revenue_cents = int(_row_first_value(rev_row, 0) or 0)
 
         # Scheduled/sent announcement counts.
         c.execute("SELECT COUNT(*) FROM admin_announcements WHERE status = 'scheduled'")
         scheduled_row = c.fetchone()
-        announcements_scheduled = int(scheduled_row[0] if not hasattr(scheduled_row, 'keys') else list(scheduled_row.values())[0] or 0)
+        announcements_scheduled = int(_row_first_value(scheduled_row, 0) or 0)
         c.execute("SELECT COUNT(*) FROM admin_announcements WHERE status = 'sent'")
         sent_row = c.fetchone()
-        announcements_sent = int(sent_row[0] if not hasattr(sent_row, 'keys') else list(sent_row.values())[0] or 0)
+        announcements_sent = int(_row_first_value(sent_row, 0) or 0)
 
         # Maintenance mode state
         if db_type == 'postgres':

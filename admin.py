@@ -52,7 +52,7 @@ def admin_required(f):
     def decorated_function(*args, **kwargs):
         admin = get_admin_session()
         if not admin:
-            if request.is_json:
+            if request.is_json or request.path.startswith('/admin/api/'):
                 return jsonify({"error": "Admin login required"}), 401
             return redirect(url_for('admin.admin_login'))
         return f(*args, **kwargs)
@@ -728,6 +728,24 @@ def get_stats():
             print(f"[DEBUG] Table creation warning: {e}")
             if db_type == 'postgres':
                 conn.rollback()
+
+        # Ensure soft-delete columns exist for comment counts
+        try:
+            if db_type == 'postgres':
+                c.execute("ALTER TABLE comments ADD COLUMN IF NOT EXISTS is_deleted INTEGER DEFAULT 0")
+                c.execute("ALTER TABLE comment_replies ADD COLUMN IF NOT EXISTS is_deleted INTEGER DEFAULT 0")
+            else:
+                try:
+                    c.execute("SELECT is_deleted FROM comments LIMIT 1")
+                except Exception:
+                    c.execute("ALTER TABLE comments ADD COLUMN is_deleted INTEGER DEFAULT 0")
+                try:
+                    c.execute("SELECT is_deleted FROM comment_replies LIMIT 1")
+                except Exception:
+                    c.execute("ALTER TABLE comment_replies ADD COLUMN is_deleted INTEGER DEFAULT 0")
+            conn.commit()
+        except Exception as e:
+            print(f"[DEBUG] Soft delete column warning: {e}")
         
         users = get_count("SELECT COUNT(*) as count FROM users")
         now_iso = datetime.now().isoformat()

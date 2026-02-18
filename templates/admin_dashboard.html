@@ -1528,7 +1528,7 @@
                     box.innerHTML = '<div class="empty-state">No admin messages yet</div>';
                     return;
                 }
-                box.innerHTML = rows.map(r => `<div class="admin-chat-item"><strong>${escapeHtml(String(r.admin_role || '').toUpperCase())}</strong>: ${escapeHtml(r.message || '')}<br><small style="color:#888">${new Date(r.created_at).toLocaleString()}</small></div>`).join('');
+                box.innerHTML = rows.map(r => `<div class="admin-chat-item"><strong>${escapeHtml(String(r.admin_role || '').toUpperCase())}</strong>: ${escapeHtml(r.message || '')}<br><small style="color:#888">${formatLocalTime(r.created_at)}</small></div>`).join('');
                 box.scrollTop = box.scrollHeight;
             } catch (err) {
                 box.innerHTML = '<div class="empty-state">Failed to load chat</div>';
@@ -1649,7 +1649,7 @@
                 
                 let html = '<table><thead><tr><th>User</th><th>Reason</th><th>Expires</th><th>Actions</th></tr></thead><tbody>';
                 data.forEach(r => {
-                    const expires = r.expires_at ? new Date(r.expires_at).toLocaleString() : 'Unknown';
+                    const expires = r.expires_at ? formatLocalTime(r.expires_at) : 'Unknown';
                     html += `<tr>
                         <td>${escapeHtml(r.user_name)}<br><small style="color:#888">${escapeHtml(r.user_email)}</small></td>
                         <td>${escapeHtml(r.reason)}</td>
@@ -1686,9 +1686,9 @@
                 data.forEach(b => {
                     let duration = 'Permanent';
                     if (b.expires_at) {
-                        const expires = new Date(b.expires_at);
+                        const expires = parseTimestamp(b.expires_at);
                         const now = new Date();
-                        const diff = Math.ceil((expires - now) / (1000 * 60 * 60));
+                        const diff = expires ? Math.ceil((expires - now) / (1000 * 60 * 60)) : 0;
                         duration = diff > 24 ? `${Math.ceil(diff/24)}d` : `${diff}h`;
                     }
                     html += `<tr>
@@ -1737,7 +1737,7 @@
                         <div class="comment-card">
                             <div class="comment-header">
                                 <span><strong>${escapeHtml(c.user_name)}</strong></span>
-                                <span>${new Date(c.timestamp).toLocaleString()}</span>
+                                <span>${formatLocalTime(c.timestamp)}</span>
                             </div>
                             <div class="comment-text">${escapeHtml(c.text)}</div>
                             <div style="font-size:0.82rem;color:#888;margin:6px 0;">
@@ -1919,6 +1919,27 @@
             }
         }
 
+        function normalizeTimestamp(ts) {
+            if (!ts) return null;
+            const raw = String(ts).trim();
+            if (!raw) return null;
+            const hasZone = /[zZ]|[+-]\d{2}:\d{2}$/.test(raw);
+            const cleaned = raw.includes('T') ? raw : raw.replace(' ', 'T');
+            return hasZone ? cleaned : `${cleaned}Z`;
+        }
+
+        function parseTimestamp(ts) {
+            const normalized = normalizeTimestamp(ts);
+            if (!normalized) return null;
+            const d = new Date(normalized);
+            return Number.isNaN(d.getTime()) ? null : d;
+        }
+
+        function formatLocalTime(ts) {
+            const d = parseTimestamp(ts);
+            return d ? d.toLocaleString() : '-';
+        }
+
         function formatLocation(location, fallbackIp) {
             const loc = (location && typeof location === 'object') ? location : {};
             const ip = loc.ip || fallbackIp || '';
@@ -1940,7 +1961,7 @@
         function renderAuditTable(rows) {
             let html = '<table><thead><tr><th>Time</th><th>Admin</th><th>Action</th><th>Status</th><th>Target</th><th>Location</th><th>Details</th><th>Extras</th></tr></thead><tbody>';
             rows.forEach(l => {
-                const time = l.timestamp ? new Date(l.timestamp).toLocaleString() : '-';
+                const time = formatLocalTime(l.timestamp);
                 const statusText = String(l.status || 'unknown').toLowerCase();
                 const statusColor = statusText === 'success' ? '#48bb78' : (statusText === 'failed' ? '#f56565' : '#ed8936');
                 const target = l.target_name
@@ -2002,7 +2023,7 @@
             }
             let html = '<table><thead><tr><th>User</th><th>Reason</th><th>Expires</th><th>Actions</th></tr></thead><tbody>';
             rows.forEach(r => {
-                const expires = r.expires_at ? new Date(r.expires_at).toLocaleString() : 'Unknown';
+                const expires = r.expires_at ? formatLocalTime(r.expires_at) : 'Unknown';
                 html += `<tr>
                     <td>${escapeHtml(r.user_name)}<br><small style="color:#888">${escapeHtml(r.user_email)}</small></td>
                     <td>${escapeHtml(r.reason)}</td>
@@ -2025,7 +2046,8 @@
                     String(b.reason || '').toLowerCase().includes(q);
                 if (!matchesText) return false;
                 if (!banType) return true;
-                const isTemporary = !!b.expires_at && (new Date(b.expires_at).getTime() > now);
+                const expDt = b.expires_at ? parseTimestamp(b.expires_at) : null;
+                const isTemporary = !!expDt && (expDt.getTime() > now);
                 return banType === 'temporary' ? isTemporary : !isTemporary;
             });
 
@@ -2038,8 +2060,8 @@
             rows.forEach(b => {
                 let duration = 'Permanent';
                 if (b.expires_at) {
-                    const expires = new Date(b.expires_at);
-                    const diff = Math.ceil((expires - new Date()) / (1000 * 60 * 60));
+                    const expires = parseTimestamp(b.expires_at);
+                    const diff = expires ? Math.ceil((expires - new Date()) / (1000 * 60 * 60)) : 0;
                     duration = diff > 24 ? `${Math.ceil(diff / 24)}d` : `${diff}h`;
                 }
                 html += `<tr>
@@ -2062,7 +2084,7 @@
             const fromTs = fromDate ? new Date(fromDate + 'T00:00:00').getTime() : null;
             const toTs = toDate ? new Date(toDate + 'T23:59:59').getTime() : null;
             const rows = (allAuditLogs || []).filter(l => {
-                const ts = l.timestamp ? new Date(l.timestamp).getTime() : null;
+                const ts = l.timestamp ? (parseTimestamp(l.timestamp)?.getTime() ?? null) : null;
                 if ((fromTs || toTs) && !ts) return false;
                 if (fromTs && ts && ts < fromTs) return false;
                 if (toTs && ts && ts > toTs) return false;
@@ -2428,7 +2450,7 @@
                 let html = '';
                 data.forEach(log => {
                     const icon = icons[log.action] || '[LOG]';
-                    const time = log.timestamp ? new Date(log.timestamp).toLocaleString() : '-';
+                    const time = formatLocalTime(log.timestamp);
                     const adminName = escapeHtml(log.admin_name || log.admin_id || 'system');
                     const actionName = escapeHtml((log.action || 'UNKNOWN').replace(/_/g, ' '));
                     const statusLine = `<div class="activity-details">Status: ${escapeHtml(String(log.status || 'unknown').toUpperCase())}</div>`;

@@ -142,7 +142,9 @@
         body.compact-mode .nav-item { padding: 8px 12px !important; }
 
         /* ===== NO ANIMATIONS ===== */
-        body.no-animations * { 
+        body.no-animations *,
+        body.no-animations *::before,
+        body.no-animations *::after { 
             animation-play-state: paused !important; 
         }
         body.no-animations .ambient-orb { 
@@ -179,6 +181,17 @@
             background: rgba(255,255,255,0.5);
             border-radius: 50%;
             animation: particleFloat 18s infinite linear;
+        }
+        .particle.symbol {
+            width: auto;
+            height: auto;
+            background: none;
+            border-radius: 0;
+            color: rgba(255,255,255,0.35);
+            font-size: 12px;
+            font-weight: 600;
+            text-shadow: 0 0 12px rgba(255,255,255,0.12);
+            animation: particleFloat 22s infinite linear;
         }
         @keyframes particleFloat {
             0% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
@@ -556,6 +569,16 @@
             animation: brandPulseRing 3.2s ease-in-out infinite;
             pointer-events: none;
         }
+        .brand-icon::after {
+            content: '';
+            position: absolute;
+            inset: -8px;
+            border-radius: 20px;
+            border: 1px dashed rgba(255,255,255,0.18);
+            opacity: 0.7;
+            animation: brandSpin 14s linear infinite;
+            pointer-events: none;
+        }
         @keyframes brandPulse {
             0%, 100% { transform: scale(1); box-shadow: 0 4px 20px var(--primary-glow); }
             50% { transform: scale(1.04); box-shadow: 0 8px 28px var(--primary-glow); }
@@ -564,6 +587,14 @@
             0% { transform: scale(0.96); opacity: 0.65; }
             60% { transform: scale(1.08); opacity: 0.2; }
             100% { transform: scale(1.12); opacity: 0; }
+        }
+        @keyframes brandSpin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        @keyframes slowSpin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(-360deg); }
         }
 
         .admin-badge {
@@ -2652,6 +2683,17 @@
             right: -10px;
             font-size: 60px;
             opacity: 0.2;
+            animation: slowSpin 18s linear infinite;
+        }
+        .daily-challenge::after {
+            content: '';
+            position: absolute;
+            inset: -20px;
+            border-radius: 28px;
+            border: 1px dashed rgba(255,255,255,0.12);
+            opacity: 0.35;
+            animation: brandSpin 28s linear infinite;
+            pointer-events: none;
         }
         .daily-challenge.complete .challenge-text {
             opacity: 0.75;
@@ -3290,7 +3332,7 @@
         .mb-4 { margin-bottom: 16px; }
     </style>
 </head>
-<body class="noir-mode">
+<body>
     <div class="ambient-bg">
         <div class="ambient-orb orb-1"></div>
         <div class="ambient-orb orb-2"></div>
@@ -7293,6 +7335,7 @@ function loadAchievements(stats) {
             document.documentElement.setAttribute('data-theme', settings.darkMode ? 'dark' : 'light');
             const toggle = document.getElementById('darkToggle');
             if (toggle) toggle.classList.toggle('active', settings.darkMode);
+            document.body.classList.toggle('noir-mode', settings.darkMode);
         }
 
         function toggleTheme() {
@@ -7669,7 +7712,7 @@ function loadAchievements(stats) {
             if (!container) return;
             
             container.innerHTML = '';
-            for (let i = 0; i < 40; i++) {
+            for (let i = 0; i < 32; i++) {
                 const p = document.createElement('div');
                 p.className = 'particle';
                 p.style.left = Math.random() * 100 + '%';
@@ -7677,6 +7720,19 @@ function loadAchievements(stats) {
                 p.style.animationDelay = Math.random() * 15 + 's';
                 p.style.opacity = 0.28 + Math.random() * 0.38;
                 container.appendChild(p);
+            }
+
+            const symbols = ['✝', '✚', '✟', '✞', '✠', '✦', '✧'];
+            for (let i = 0; i < 12; i++) {
+                const s = document.createElement('div');
+                s.className = 'particle symbol';
+                s.textContent = symbols[Math.floor(Math.random() * symbols.length)];
+                s.style.left = Math.random() * 100 + '%';
+                s.style.animationDuration = (14 + Math.random() * 18) + 's';
+                s.style.animationDelay = Math.random() * 18 + 's';
+                s.style.opacity = 0.18 + Math.random() * 0.35;
+                s.style.fontSize = (10 + Math.random() * 10) + 'px';
+                container.appendChild(s);
             }
         }
 

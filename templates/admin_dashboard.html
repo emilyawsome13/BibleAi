@@ -1303,7 +1303,9 @@
         let restrictUserId = null;
         let selectedDuration = 'permanent';
         let selectedHours = 24;
+        let newRestrictHours = 24;
         let currentCommentTab = 'verse';
+        let settingsCanEdit = false;
 
         function toggleMenu() {
             document.getElementById('sidebar').classList.toggle('active');
@@ -1794,11 +1796,8 @@
                 ]);
                 const data = await settingsRes.json();
                 const systemData = await systemRes.json();
-                
-                if (!data.can_edit) {
-                    container.innerHTML = '<div class="empty-state">Only owners can view/edit settings</div>';
-                    return;
-                }
+                const canEdit = !!data.can_edit;
+                settingsCanEdit = canEdit;
                 
                 const currentInterval = parseInt(systemData.verse_interval || 60, 10);
                 const currentAutoRefresh = parseInt(systemData.auto_refresh_seconds || 30, 10);
@@ -1810,6 +1809,7 @@
                 container.innerHTML = `
                     <div class="settings-meta"><strong>Site:</strong> ${data.site_name}</div>
                     <div class="settings-meta"><strong>Maintenance:</strong> ${data.maintenance_mode}</div>
+                    ${canEdit ? '' : '<div class="empty-state">View only. Owner access required to edit settings.</div>'}
                     <div class="interval-setting-card">
                         <div class="interval-setting-title">Verse Refresh Interval</div>
                         <div class="interval-setting-help">Controls how often new verses are generated for users.</div>
@@ -1821,7 +1821,7 @@
                                 <option value="300" ${currentInterval === 300 ? 'selected' : ''}>5 minutes</option>
                                 <option value="600" ${currentInterval === 600 ? 'selected' : ''}>10 minutes</option>
                             </select>
-                            <button class="btn btn-primary" onclick="saveDashboardInterval()">Save Interval</button>
+                            <button class="btn btn-primary" onclick="saveDashboardInterval()" ${canEdit ? '' : 'disabled'}>Save Interval</button>
                         </div>
                     </div>
                     <div class="settings-grid">
@@ -1873,7 +1873,7 @@
                             <div class="setting-help">Temporarily lock the main website for upgrades.</div>
                         </div>
                     </div>
-                    <button class="btn btn-primary" onclick="saveFeaturedSettings()">Save Featured Settings</button>
+                    <button class="btn btn-primary" onclick="saveFeaturedSettings()" ${canEdit ? '' : 'disabled'}>Save Featured Settings</button>
                     <h4 style="margin-bottom:15px;">&#128274; Role Codes:</h4>
                     <div style="font-family:monospace;background:rgba(0,0,0,0.3);padding:15px;border-radius:8px;line-height:2;">
                         <div>Host: ${data.codes.host}</div>
@@ -1891,6 +1891,10 @@
         }
 
         async function saveDashboardInterval() {
+            if (!settingsCanEdit) {
+                showToast('Owner access required');
+                return;
+            }
             const select = document.getElementById('dashboardVerseInterval');
             if (!select) return;
             const interval = parseInt(select.value, 10);
@@ -1913,6 +1917,10 @@
         }
 
         async function saveFeaturedSettings() {
+            if (!settingsCanEdit) {
+                showToast('Owner access required');
+                return;
+            }
             const payload = {
                 auto_refresh_seconds: parseInt(document.getElementById('adminAutoRefreshSeconds')?.value || '30', 10),
                 audit_retention_days: parseInt(document.getElementById('adminAuditRetentionDays')?.value || '90', 10),
@@ -2229,6 +2237,53 @@
             }
         }
 
+        // Add restriction by email (Restrictions tab)
+        function openAddRestrictionModal() {
+            document.getElementById('addRestrictionModal').classList.add('active');
+        }
+
+        function closeAddRestrictionModal() {
+            document.getElementById('addRestrictionModal').classList.remove('active');
+            document.getElementById('restrictionUserEmail').value = '';
+            document.getElementById('newRestrictReason').value = '';
+            newRestrictHours = 24;
+            document.querySelectorAll('#addRestrictionModal .duration-btn').forEach(btn => btn.classList.remove('selected'));
+            const defaultBtn = document.querySelector('#addRestrictionModal .duration-btn[data-hours="24"]');
+            if (defaultBtn) defaultBtn.classList.add('selected');
+        }
+
+        function selectNewRestrictHours(hours) {
+            newRestrictHours = hours;
+            document.querySelectorAll('#addRestrictionModal .duration-btn').forEach(btn => btn.classList.remove('selected'));
+            const btn = document.querySelector(`#addRestrictionModal .duration-btn[data-hours="${hours}"]`);
+            if (btn) btn.classList.add('selected');
+        }
+
+        async function addNewRestriction() {
+            const email = (document.getElementById('restrictionUserEmail')?.value || '').trim();
+            const reason = (document.getElementById('newRestrictReason')?.value || '').trim() || 'No reason';
+            if (!email) return showToast('User email required');
+            try {
+                const lookup = await fetch(`/admin/api/users?q=${encodeURIComponent(email)}`);
+                const users = await lookup.json();
+                if (!Array.isArray(users)) return showToast('User lookup failed');
+                const match = users.find(u => String(u.email || '').toLowerCase() === email.toLowerCase());
+                if (!match) return showToast('User not found');
+                const res = await fetch(`/admin/api/users/${match.id}/restrict`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ hours: newRestrictHours, reason })
+                });
+                const data = await res.json();
+                if (!data.success) return showToast('Failed: ' + (data.error || 'Unknown'));
+                showToast(`Restricted ${match.name || 'user'} for ${newRestrictHours}h`);
+                closeAddRestrictionModal();
+                loadAllData();
+            } catch (err) {
+                showToast('Error: ' + err.message);
+            }
+        }
+
         // Restrict functions
         function selectRestrictHours(hours) {
             selectedHours = hours;
@@ -2347,6 +2402,10 @@
             
             if (section === 'settings') loadSettings();
             if (section === 'audit') loadAuditLogs();
+            if (section === 'comments') loadComments();
+            if (section === 'restrictions') loadRestrictions();
+            if (section === 'bans') loadBans();
+            if (section === 'users') loadUsers();
         }
 
         async function logout() {

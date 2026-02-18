@@ -4735,7 +4735,16 @@
             const res = await fetch('/api/like', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({verse_id: currentVerse.id})
+                body: JSON.stringify({
+                    verse_id: currentVerse.id,
+                    verse: {
+                        reference: currentVerse.ref,
+                        text: currentVerse.text,
+                        translation: currentVerse.trans,
+                        source: currentVerse.source,
+                        book: currentVerse.book
+                    }
+                })
             });
             const data = await res.json();
             updateLikeUI(data.liked);
@@ -4756,7 +4765,16 @@
             const res = await fetch('/api/save', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({verse_id: currentVerse.id})
+                body: JSON.stringify({
+                    verse_id: currentVerse.id,
+                    verse: {
+                        reference: currentVerse.ref,
+                        text: currentVerse.text,
+                        translation: currentVerse.trans,
+                        source: currentVerse.source,
+                        book: currentVerse.book
+                    }
+                })
             });
             const data = await res.json();
             updateSaveUI(data.saved);
@@ -5497,43 +5515,43 @@ function getStreakCount() {
 
 const ACHIEVEMENTS = [
     // Like Achievements
-    { id: 'first_like', icon: '??', name: 'First Love', desc: 'Like your first verse', goal: 1, progress: (d) => d.liked, check: (d) => d.liked >= 1 },
-    { id: 'liker_50', icon: '??', name: 'Appreciator', desc: 'Like 50 verses', goal: 50, progress: (d) => d.liked, check: (d) => d.liked >= 50 },
-    { id: 'liker_200', icon: '??', name: 'Enthusiast', desc: 'Like 200 verses', goal: 200, progress: (d) => d.liked, check: (d) => d.liked >= 200 },
-    { id: 'liker_500', icon: '??', name: 'Devoted', desc: 'Like 500 verses', goal: 500, progress: (d) => d.liked, check: (d) => d.liked >= 500 },
+    { id: 'first_like', icon: '❤️', name: 'First Love', desc: 'Like your first verse', goal: 1, progress: (d) => d.liked, check: (d) => d.liked >= 1 },
+    { id: 'liker_50', icon: '💖', name: 'Appreciator', desc: 'Like 50 verses', goal: 50, progress: (d) => d.liked, check: (d) => d.liked >= 50 },
+    { id: 'liker_200', icon: '💞', name: 'Enthusiast', desc: 'Like 200 verses', goal: 200, progress: (d) => d.liked, check: (d) => d.liked >= 200 },
+    { id: 'liker_500', icon: '💘', name: 'Devoted', desc: 'Like 500 verses', goal: 500, progress: (d) => d.liked, check: (d) => d.liked >= 500 },
 
     // Save Achievements
-    { id: 'collector', icon: '??', name: 'Collector', desc: 'Save 10 verses', goal: 10, progress: (d) => d.saved, check: (d) => d.saved >= 10 },
-    { id: 'librarian', icon: '???', name: 'Librarian', desc: 'Save 50 verses', goal: 50, progress: (d) => d.saved, check: (d) => d.saved >= 50 },
-    { id: 'archivist', icon: '??', name: 'Archivist', desc: 'Save 150 verses', goal: 150, progress: (d) => d.saved, check: (d) => d.saved >= 150 },
-    { id: 'curator', icon: '??', name: 'Curator', desc: 'Save 300 verses', goal: 300, progress: (d) => d.saved, check: (d) => d.saved >= 300 },
+    { id: 'collector', icon: '🔖', name: 'Collector', desc: 'Save 10 verses', goal: 10, progress: (d) => d.saved, check: (d) => d.saved >= 10 },
+    { id: 'librarian', icon: '📚', name: 'Librarian', desc: 'Save 50 verses', goal: 50, progress: (d) => d.saved, check: (d) => d.saved >= 50 },
+    { id: 'archivist', icon: '🗄️', name: 'Archivist', desc: 'Save 150 verses', goal: 150, progress: (d) => d.saved, check: (d) => d.saved >= 150 },
+    { id: 'curator', icon: '🏛️', name: 'Curator', desc: 'Save 300 verses', goal: 300, progress: (d) => d.saved, check: (d) => d.saved >= 300 },
 
     // Comment Achievements
-    { id: 'first_comment', icon: '??', name: 'Voice', desc: 'Post a comment', goal: 1, progress: (d) => d.comments, check: (d) => d.comments >= 1 },
-    { id: 'conversationalist', icon: '???', name: 'Chatty', desc: 'Post 25 comments', goal: 25, progress: (d) => d.comments, check: (d) => d.comments >= 25 },
-    { id: 'storyteller', icon: '??', name: 'Storyteller', desc: 'Post 75 comments', goal: 75, progress: (d) => d.comments, check: (d) => d.comments >= 75 },
-    { id: 'oracle', icon: '??', name: 'Oracle', desc: 'Post 150 comments', goal: 150, progress: (d) => d.comments, check: (d) => d.comments >= 150 },
+    { id: 'first_comment', icon: '💬', name: 'Voice', desc: 'Post a comment', goal: 1, progress: (d) => d.comments, check: (d) => d.comments >= 1 },
+    { id: 'conversationalist', icon: '🗣️', name: 'Chatty', desc: 'Post 25 comments', goal: 25, progress: (d) => d.comments, check: (d) => d.comments >= 25 },
+    { id: 'storyteller', icon: '📜', name: 'Storyteller', desc: 'Post 75 comments', goal: 75, progress: (d) => d.comments, check: (d) => d.comments >= 75 },
+    { id: 'oracle', icon: '🔮', name: 'Oracle', desc: 'Post 150 comments', goal: 150, progress: (d) => d.comments, check: (d) => d.comments >= 150 },
 
     // View/Explorer Achievements
-    { id: 'explorer', icon: '??', name: 'Explorer', desc: 'View 100 verses', goal: 100, progress: (d) => d.total_verses, check: (d) => d.total_verses >= 100 },
-    { id: 'scholar', icon: '??', name: 'Scholar', desc: 'View 500 verses', goal: 500, progress: (d) => d.total_verses, check: (d) => d.total_verses >= 500 },
-    { id: 'sage', icon: '??', name: 'Sage', desc: 'View 1000 verses', goal: 1000, progress: (d) => d.total_verses, check: (d) => d.total_verses >= 1000 },
-    { id: 'master', icon: '??', name: 'Master', desc: 'View 2500 verses', goal: 2500, progress: (d) => d.total_verses, check: (d) => d.total_verses >= 2500 },
+    { id: 'explorer', icon: '🧭', name: 'Explorer', desc: 'View 100 verses', goal: 100, progress: (d) => d.total_verses, check: (d) => d.total_verses >= 100 },
+    { id: 'scholar', icon: '🎓', name: 'Scholar', desc: 'View 500 verses', goal: 500, progress: (d) => d.total_verses, check: (d) => d.total_verses >= 500 },
+    { id: 'sage', icon: '🧠', name: 'Sage', desc: 'View 1000 verses', goal: 1000, progress: (d) => d.total_verses, check: (d) => d.total_verses >= 1000 },
+    { id: 'master', icon: '👑', name: 'Master', desc: 'View 2500 verses', goal: 2500, progress: (d) => d.total_verses, check: (d) => d.total_verses >= 2500 },
 
     // Streak Achievements
-    { id: 'three_day_streak', icon: '??', name: 'On Fire', desc: '3 day streak', goal: 3, progress: () => getStreakCount(), check: () => getStreakCount() >= 3 },
-    { id: 'week_warrior', icon: '??', name: 'Warrior', desc: '7 day streak', goal: 7, progress: () => getStreakCount(), check: () => getStreakCount() >= 7 },
-    { id: 'fortnight', icon: '??', name: 'Unstoppable', desc: '14 day streak', goal: 14, progress: () => getStreakCount(), check: () => getStreakCount() >= 14 },
-    { id: 'month_master', icon: '??', name: 'Month Master', desc: '30 day streak', goal: 30, progress: () => getStreakCount(), check: () => getStreakCount() >= 30 },
+    { id: 'three_day_streak', icon: '🔥', name: 'On Fire', desc: '3 day streak', goal: 3, progress: () => getStreakCount(), check: () => getStreakCount() >= 3 },
+    { id: 'week_warrior', icon: '🛡️', name: 'Warrior', desc: '7 day streak', goal: 7, progress: () => getStreakCount(), check: () => getStreakCount() >= 7 },
+    { id: 'fortnight', icon: '⚔️', name: 'Unstoppable', desc: '14 day streak', goal: 14, progress: () => getStreakCount(), check: () => getStreakCount() >= 14 },
+    { id: 'month_master', icon: '🏆', name: 'Month Master', desc: '30 day streak', goal: 30, progress: () => getStreakCount(), check: () => getStreakCount() >= 30 },
 
     // Share Achievements
-    { id: 'share_the_word', icon: '??', name: 'Evangelist', desc: 'Share 5 verses', goal: 5, progress: () => getSharedVerseCount(), check: () => getSharedVerseCount() >= 5 },
-    { id: 'spreader', icon: '??', name: 'Spreader', desc: 'Share 20 verses', goal: 20, progress: () => getSharedVerseCount(), check: () => getSharedVerseCount() >= 20 },
-    { id: 'missionary', icon: '??', name: 'Missionary', desc: 'Share 50 verses', goal: 50, progress: () => getSharedVerseCount(), check: () => getSharedVerseCount() >= 50 },
+    { id: 'share_the_word', icon: '📢', name: 'Evangelist', desc: 'Share 5 verses', goal: 5, progress: () => getSharedVerseCount(), check: () => getSharedVerseCount() >= 5 },
+    { id: 'spreader', icon: '🌍', name: 'Spreader', desc: 'Share 20 verses', goal: 20, progress: () => getSharedVerseCount(), check: () => getSharedVerseCount() >= 20 },
+    { id: 'missionary', icon: '✨', name: 'Missionary', desc: 'Share 50 verses', goal: 50, progress: () => getSharedVerseCount(), check: () => getSharedVerseCount() >= 50 },
 
     // Time-based Achievements
-    { id: 'night_owl', icon: '??', name: 'Night Owl', desc: 'Visit after midnight', goal: 1, progress: () => (new Date().getHours() < 5 ? 1 : 0), check: () => new Date().getHours() < 5 },
-    { id: 'early_bird', icon: '??', name: 'Early Bird', desc: 'Visit before 6am', goal: 1, progress: () => (new Date().getHours() < 6 && new Date().getHours() >= 4 ? 1 : 0), check: () => new Date().getHours() < 6 && new Date().getHours() >= 4 }
+    { id: 'night_owl', icon: '🌙', name: 'Night Owl', desc: 'Visit after midnight', goal: 1, progress: () => (new Date().getHours() < 5 ? 1 : 0), check: () => new Date().getHours() < 5 },
+    { id: 'early_bird', icon: '🌅', name: 'Early Bird', desc: 'Visit before 6am', goal: 1, progress: () => (new Date().getHours() < 6 && new Date().getHours() >= 4 ? 1 : 0), check: () => new Date().getHours() < 6 && new Date().getHours() >= 4 }
 ];
 
 function getAchievementProgress(ach, stats, isUnlocked) {
@@ -5830,10 +5848,13 @@ function loadAchievements(stats) {
                             }
                             const now = new Date();
                             const remainingMs = Math.max(0, expiresAt.getTime() - now.getTime());
-                            const mins = Math.floor(remainingMs / 60000);
-                            const secs = Math.floor((remainingMs % 60000) / 1000);
+                            const totalMins = Math.ceil(remainingMs / 60000);
+                            const hours = Math.floor(totalMins / 60);
+                            const mins = totalMins % 60;
                             if (remainingMs > 0) {
-                                cooldownEl.textContent = `Next challenge in ${mins}m ${secs}s`;
+                                cooldownEl.textContent = hours > 0
+                                    ? `Next challenge in ${hours}h ${mins}m`
+                                    : `Next challenge in ${mins}m`;
                                 return;
                             }
                             cooldownEl.textContent = 'Next challenge starting soon...';

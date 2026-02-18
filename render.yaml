@@ -10,7 +10,7 @@ services:
         value: 3.11.0
       - key: SECRET_KEY
         generateValue: true
-      - key: DATABASE_URL
+      - key: DATABASE_URL-9864bd776330b2743effe162f4cef50d
         fromDatabase:
           name: bible-ai-db
           property: connectionString

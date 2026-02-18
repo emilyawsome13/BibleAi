@@ -65,13 +65,18 @@ ROLE_CODES = {
 ADMIN_CODE = os.environ.get('ADMIN_CODE', 'God Is All')
 MASTER_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'God Is All')
 
-DATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite:///bible_ios.db')
+DATABASE_URL = os.environ.get('DATABASE_URL-9864bd776330b2743effe162f4cef50d') or 'sqlite:///bible_ios.db'
 if DATABASE_URL and DATABASE_URL.startswith('postgres://'):
     DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
 
 IS_POSTGRES = DATABASE_URL and ('postgresql' in DATABASE_URL or 'postgres' in DATABASE_URL)
+POSTGRES_AVAILABLE = True
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+SQLITE_PATH = os.path.join(BASE_DIR, 'bible_ios.db')
 BOOK_TEXT_CACHE = {}
 BOOK_META_CACHE = {}
+BAN_SCHEMA_READY = False
+RESTRICTION_SCHEMA_READY = False
 
 FALLBACK_BOOKS = [
     {"id": "GEN", "name": "Genesis"},
@@ -153,7 +158,8 @@ def get_public_url():
 
 def get_db():
     """Get database connection - PostgreSQL for Render, SQLite for local"""
-    if IS_POSTGRES:
+    global POSTGRES_AVAILABLE
+    if IS_POSTGRES and POSTGRES_AVAILABLE:
         try:
             import psycopg2
             import psycopg2.extras
@@ -161,17 +167,18 @@ def get_db():
             return conn, 'postgres'
         except ImportError:
             logger.warning("psycopg2 not installed, falling back to SQLite")
-            conn = sqlite3.connect('bible_ios.db', timeout=20)
+            conn = sqlite3.connect(SQLITE_PATH, timeout=20)
             conn.row_factory = sqlite3.Row
             return conn, 'sqlite'
         except Exception as e:
             logger.error(f"PostgreSQL connection failed: {e}")
+            POSTGRES_AVAILABLE = False
             # Fallback to SQLite if Postgres fails
-            conn = sqlite3.connect('bible_ios.db', timeout=20)
+            conn = sqlite3.connect(SQLITE_PATH, timeout=20)
             conn.row_factory = sqlite3.Row
             return conn, 'sqlite'
     else:
-        conn = sqlite3.connect('bible_ios.db', timeout=20)
+        conn = sqlite3.connect(SQLITE_PATH, timeout=20)
         conn.row_factory = sqlite3.Row
         return conn, 'sqlite'
 
@@ -204,7 +211,11 @@ def read_system_setting(key, default=None):
         if not row:
             return default
         if hasattr(row, 'keys'):
-            return row.get('value', default)
+            try:
+                val = row['value']
+            except Exception:
+                val = None
+            return default if val is None else val
         return row[0] if row[0] is not None else default
     except Exception:
         if conn:
@@ -495,6 +506,14 @@ def migrate_db():
                 logger.info("Created daily_actions table")
             except Exception as e:
                 logger.warning(f"daily_actions table may already exist: {e}")
+            try:
+                c.execute("ALTER TABLE daily_actions ADD COLUMN IF NOT EXISTS user_id INTEGER")
+                c.execute("ALTER TABLE daily_actions ADD COLUMN IF NOT EXISTS action TEXT")
+                c.execute("ALTER TABLE daily_actions ADD COLUMN IF NOT EXISTS verse_id INTEGER")
+                c.execute("ALTER TABLE daily_actions ADD COLUMN IF NOT EXISTS event_date TEXT")
+                c.execute("ALTER TABLE daily_actions ADD COLUMN IF NOT EXISTS timestamp TEXT")
+            except Exception:
+                pass
                 
         else:
             # SQLite migrations
@@ -593,6 +612,21 @@ def migrate_db():
                 logger.info("Created daily_actions table")
             except Exception as e:
                 logger.warning(f"daily_actions table may already exist: {e}")
+            try:
+                c.execute("PRAGMA table_info(daily_actions)")
+                cols = {str(r[1]).lower() for r in c.fetchall()}
+                if 'user_id' not in cols:
+                    c.execute("ALTER TABLE daily_actions ADD COLUMN user_id INTEGER")
+                if 'action' not in cols:
+                    c.execute("ALTER TABLE daily_actions ADD COLUMN action TEXT")
+                if 'verse_id' not in cols:
+                    c.execute("ALTER TABLE daily_actions ADD COLUMN verse_id INTEGER")
+                if 'event_date' not in cols:
+                    c.execute("ALTER TABLE daily_actions ADD COLUMN event_date TEXT")
+                if 'timestamp' not in cols:
+                    c.execute("ALTER TABLE daily_actions ADD COLUMN timestamp TEXT")
+            except Exception as e:
+                logger.warning(f"Could not migrate daily_actions columns: {e}")
         
         conn.commit()
         logger.info("Database migrations completed")
@@ -793,9 +827,9 @@ def get_replies_for_parent(c, db_type, parent_type, parent_id):
             timestamp = row['timestamp']
             google_name = row['google_name']
             google_picture = row['google_picture']
-            db_name = row.get('db_name')
-            db_picture = row.get('db_picture')
-            db_role = row.get('db_role')
+            db_name = row['db_name']
+            db_picture = row['db_picture']
+            db_role = row['db_role']
         except Exception:
             reply_id = row[0]
             user_id = row[1]
@@ -819,10 +853,31 @@ def get_replies_for_parent(c, db_type, parent_type, parent_id):
 
 def check_ban_status(user_id):
     """Check if user is currently banned. Returns (is_banned, reason, expires_at)"""
+    global BAN_SCHEMA_READY
     conn, db_type = get_db()
     c = get_cursor(conn, db_type)
     
     try:
+        # Ensure ban columns exist for older databases (only once per process)
+        if not BAN_SCHEMA_READY:
+            try:
+                if db_type == 'postgres':
+                    c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS ban_expires_at TIMESTAMP")
+                    c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS ban_reason TEXT")
+                else:
+                    try:
+                        c.execute("SELECT ban_expires_at FROM users LIMIT 1")
+                    except Exception:
+                        c.execute("ALTER TABLE users ADD COLUMN ban_expires_at TEXT")
+                    try:
+                        c.execute("SELECT ban_reason FROM users LIMIT 1")
+                    except Exception:
+                        c.execute("ALTER TABLE users ADD COLUMN ban_reason TEXT")
+                conn.commit()
+            except Exception:
+                pass
+            BAN_SCHEMA_READY = True
+
         if db_type == 'postgres':
             c.execute("SELECT is_banned, ban_expires_at, ban_reason FROM users WHERE id = %s", (user_id,))
         else:
@@ -1333,37 +1388,46 @@ def check_user_banned():
     if 'user_id' in session:
         # Track user presence for admin analytics.
         try:
-            conn, db_type = get_db()
-            c = get_cursor(conn, db_type)
-            c.execute("""
-                CREATE TABLE IF NOT EXISTS user_presence (
-                    user_id INTEGER PRIMARY KEY,
-                    last_seen TEXT,
-                    last_path TEXT,
-                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            now_iso = datetime.now().isoformat()
-            if db_type == 'postgres':
+            last_ping = session.get('last_presence_ping', 0)
+            now_ts = time.time()
+            should_ping = True
+            try:
+                should_ping = (now_ts - float(last_ping)) >= 20
+            except Exception:
+                should_ping = True
+            if should_ping:
+                conn, db_type = get_db()
+                c = get_cursor(conn, db_type)
                 c.execute("""
-                    INSERT INTO user_presence (user_id, last_seen, last_path, updated_at)
-                    VALUES (%s, %s, %s, %s)
-                    ON CONFLICT (user_id) DO UPDATE SET
-                        last_seen = EXCLUDED.last_seen,
-                        last_path = EXCLUDED.last_path,
-                        updated_at = EXCLUDED.updated_at
-                """, (session['user_id'], now_iso, path, now_iso))
-            else:
-                c.execute("""
-                    INSERT INTO user_presence (user_id, last_seen, last_path, updated_at)
-                    VALUES (?, ?, ?, ?)
-                    ON CONFLICT(user_id) DO UPDATE SET
-                        last_seen = excluded.last_seen,
-                        last_path = excluded.last_path,
-                        updated_at = excluded.updated_at
-                """, (session['user_id'], now_iso, path, now_iso))
-            conn.commit()
-            conn.close()
+                    CREATE TABLE IF NOT EXISTS user_presence (
+                        user_id INTEGER PRIMARY KEY,
+                        last_seen TEXT,
+                        last_path TEXT,
+                        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                now_iso = datetime.now().isoformat()
+                if db_type == 'postgres':
+                    c.execute("""
+                        INSERT INTO user_presence (user_id, last_seen, last_path, updated_at)
+                        VALUES (%s, %s, %s, %s)
+                        ON CONFLICT (user_id) DO UPDATE SET
+                            last_seen = EXCLUDED.last_seen,
+                            last_path = EXCLUDED.last_path,
+                            updated_at = EXCLUDED.updated_at
+                    """, (session['user_id'], now_iso, path, now_iso))
+                else:
+                    c.execute("""
+                        INSERT INTO user_presence (user_id, last_seen, last_path, updated_at)
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT(user_id) DO UPDATE SET
+                            last_seen = excluded.last_seen,
+                            last_path = excluded.last_path,
+                            updated_at = excluded.updated_at
+                    """, (session['user_id'], now_iso, path, now_iso))
+                conn.commit()
+                conn.close()
+                session['last_presence_ping'] = now_ts
         except Exception:
             pass
 
@@ -1391,11 +1455,12 @@ def check_user_banned():
                 </style></head>
                 <body>
                     <div class="ban-container">
-                        <h1>⛔ Account Banned</h1>
+                        <h1>Account Banned</h1>
                         <p>Your account has been suspended.</p>
                         {% if reason %}
                         <div class="reason">Reason: {{ reason }}</div>
                         {% endif %}
+                        <p>If you believe this is a mistake, contact support.</p>
                         <p><a href="/logout">Logout</a></p>
                     </div>
                 </body>
@@ -1664,10 +1729,28 @@ def callback():
         is_banned, reason, _ = check_ban_status(user_id)
         if is_banned:
             return render_template_string("""
-            <h1>Account Banned</h1>
-            <p>Your account has been banned.</p>
-            <p>Reason: {{ reason }}</p>
-            <a href="/logout">Logout</a>
+            <!DOCTYPE html>
+            <html>
+            <head><title>Account Banned</title>
+            <style>
+                body { background: #0a0a0f; color: white; font-family: system-ui; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+                .ban-container { text-align: center; padding: 40px; background: rgba(255,55,95,0.1); border: 1px solid #ff375f; border-radius: 20px; max-width: 420px; }
+                h1 { color: #ff375f; margin-bottom: 20px; }
+                .reason { background: rgba(0,0,0,0.3); padding: 15px; border-radius: 10px; margin: 20px 0; font-style: italic; }
+                a { color: #0A84FF; text-decoration: none; }
+            </style></head>
+            <body>
+                <div class="ban-container">
+                    <h1>Account Banned</h1>
+                    <p>Your account has been suspended.</p>
+                    {% if reason %}
+                    <div class="reason">Reason: {{ reason }}</div>
+                    {% endif %}
+                    <p>If you believe this is a mistake, contact support.</p>
+                    <p><a href="/logout">Logout</a></p>
+                </div>
+            </body>
+            </html>
             """, reason=reason), 403
         
         session['user_id'] = user_id
@@ -1679,6 +1762,8 @@ def callback():
             session['role'] = user['role'] if isinstance(user, dict) else (user[10] if len(user) > 10 else 'user')
         except (TypeError, KeyError):
             session['role'] = user[10] if len(user) > 10 else 'user'
+
+        log_user_activity("USER_LOGIN", user_id=user_id, message="User login", extras={"email": email})
         
         return redirect(url_for('index'))
         
@@ -1705,6 +1790,17 @@ def check_ban():
         "expires_at": expires_at
     })
 
+@app.route('/api/restriction_status')
+def restriction_status():
+    if 'user_id' not in session:
+        return jsonify({"restricted": False})
+    is_restricted, reason, expires_at = check_comment_restriction(session['user_id'])
+    return jsonify({
+        "restricted": is_restricted,
+        "reason": reason,
+        "expires_at": expires_at
+    })
+
 @app.route('/api/current')
 def get_current():
     if 'user_id' not in session:
@@ -1712,14 +1808,13 @@ def get_current():
 
     user_id = session['user_id']
     now = time.time()
+    is_banned, reason, _ = check_ban_status(user_id)
+    if is_banned:
+        return jsonify({"error": "banned", "message": "Account banned", "reason": reason}), 403
     with _current_api_cache_lock:
         cached = _current_api_cache.get(user_id)
         if cached and (now - cached['timestamp']) < CURRENT_API_CACHE_TTL:
             return jsonify(cached['payload'])
-
-    is_banned, _, _ = check_ban_status(user_id)
-    if is_banned:
-        return jsonify({"error": "banned", "message": "Account banned"}), 403
 
     # Ensure thread is running
     generator.start_thread()
@@ -2192,34 +2287,89 @@ def get_user_info():
     
     conn, db_type = get_db()
     c = get_cursor(conn, db_type)
+    user_id = session['user_id']
+
+    def parse_dt(value):
+        if not value:
+            return None
+        if isinstance(value, datetime):
+            return value
+        try:
+            return datetime.fromisoformat(str(value))
+        except Exception:
+            try:
+                return datetime.fromisoformat(str(value).replace(' ', 'T'))
+            except Exception:
+                return None
+
+    def find_earliest_activity():
+        earliest = None
+        tables = [
+            'likes',
+            'saves',
+            'comments',
+            'community_messages',
+            'comment_replies',
+            'daily_actions'
+        ]
+        for table in tables:
+            try:
+                if db_type == 'postgres':
+                    c.execute(f"SELECT MIN(timestamp) FROM {table} WHERE user_id = %s", (user_id,))
+                else:
+                    c.execute(f"SELECT MIN(timestamp) FROM {table} WHERE user_id = ?", (user_id,))
+                row = c.fetchone()
+                value = row[0] if row else None
+                dt = parse_dt(value)
+                if dt and (earliest is None or dt < earliest):
+                    earliest = dt
+            except Exception:
+                continue
+        return earliest
     
     try:
         if db_type == 'postgres':
-            c.execute("SELECT created_at, is_admin, is_banned, role, name FROM users WHERE id = %s", (session['user_id'],))
+            c.execute("SELECT created_at, is_admin, is_banned, role, name FROM users WHERE id = %s", (user_id,))
         else:
-            c.execute("SELECT created_at, is_admin, is_banned, role, name FROM users WHERE id = ?", (session['user_id'],))
+            c.execute("SELECT created_at, is_admin, is_banned, role, name FROM users WHERE id = ?", (user_id,))
         
         row = c.fetchone()
         
         if row:
-            try:
-                return jsonify({
-                    "created_at": row['created_at'],
-                    "is_admin": bool(row['is_admin']),
-                    "is_banned": bool(row['is_banned']),
-                    "role": row['role'] or 'user',
-                    "name": row.get('name') or session.get('user_name'),
-                    "session_admin": session.get('is_admin', False)
-                })
-            except (TypeError, KeyError):
-                return jsonify({
-                    "created_at": row[0],
-                    "is_admin": bool(row[1]),
-                    "is_banned": bool(row[2]),
-                    "role": row[3] if row[3] else 'user',
-                    "name": row[4] if len(row) > 4 else session.get('user_name'),
-                    "session_admin": session.get('is_admin', False)
-                })
+            if isinstance(row, dict) or hasattr(row, 'keys'):
+                created_at_val = row['created_at']
+                is_admin_val = bool(row['is_admin'])
+                is_banned_val = bool(row['is_banned'])
+                role_val = row['role'] or 'user'
+                name_val = row['name'] or session.get('user_name')
+            else:
+                created_at_val = row[0]
+                is_admin_val = bool(row[1])
+                is_banned_val = bool(row[2])
+                role_val = row[3] if row[3] else 'user'
+                name_val = row[4] if len(row) > 4 else session.get('user_name')
+
+            if not created_at_val:
+                earliest = find_earliest_activity()
+                if earliest:
+                    created_at_val = earliest.isoformat()
+                    try:
+                        if db_type == 'postgres':
+                            c.execute("UPDATE users SET created_at = %s WHERE id = %s", (created_at_val, user_id))
+                        else:
+                            c.execute("UPDATE users SET created_at = ? WHERE id = ?", (created_at_val, user_id))
+                        conn.commit()
+                    except Exception:
+                        conn.rollback()
+
+            return jsonify({
+                "created_at": created_at_val,
+                "is_admin": is_admin_val,
+                "is_banned": is_banned_val,
+                "role": role_val,
+                "name": name_val,
+                "session_admin": session.get('is_admin', False)
+            })
         return jsonify({"created_at": None, "is_admin": False, "is_banned": False, "role": "user", "name": session.get('user_name')})
     except Exception as e:
         logger.error(f"User info error: {e}")
@@ -2366,7 +2516,7 @@ def get_stats():
             liked = safe_count("SELECT COUNT(*) FROM likes WHERE user_id = %s", (session['user_id'],))
             saved = safe_count("SELECT COUNT(*) FROM saves WHERE user_id = %s", (session['user_id'],))
             # Count all comments by this user
-            comments = safe_count("SELECT COUNT(*) FROM comments WHERE user_id = %s", (session['user_id'],))
+            comments = safe_count("SELECT COUNT(*) FROM comments WHERE user_id = %s AND COALESCE(is_deleted, 0) = 0", (session['user_id'],))
             # Also count community messages
             community = safe_count("SELECT COUNT(*) FROM community_messages WHERE user_id = %s", (session['user_id'],))
             replies = safe_count("SELECT COUNT(*) FROM comment_replies WHERE user_id = %s AND COALESCE(is_deleted, 0) = 0", (session['user_id'],))
@@ -2374,7 +2524,7 @@ def get_stats():
             total = safe_count("SELECT COUNT(*) FROM verses")
             liked = safe_count("SELECT COUNT(*) FROM likes WHERE user_id = ?", (session['user_id'],))
             saved = safe_count("SELECT COUNT(*) FROM saves WHERE user_id = ?", (session['user_id'],))
-            comments = safe_count("SELECT COUNT(*) FROM comments WHERE user_id = ?", (session['user_id'],))
+            comments = safe_count("SELECT COUNT(*) FROM comments WHERE user_id = ? AND COALESCE(is_deleted, 0) = 0", (session['user_id'],))
             community = safe_count("SELECT COUNT(*) FROM community_messages WHERE user_id = ?", (session['user_id'],))
             replies = safe_count("SELECT COUNT(*) FROM comment_replies WHERE user_id = ? AND COALESCE(is_deleted, 0) = 0", (session['user_id'],))
         
@@ -2533,11 +2683,13 @@ def like_verse():
     
     data = request.get_json()
     verse_id = data.get('verse_id')
+    verse_payload = data.get('verse') if isinstance(data, dict) else None
     
     conn, db_type = get_db()
     c = get_cursor(conn, db_type)
     
     try:
+        verse_id = ensure_verse_id(c, db_type, verse_id, verse_payload)
         if db_type == 'postgres':
             c.execute("SELECT id FROM likes WHERE user_id = %s AND verse_id = %s", (session['user_id'], verse_id))
             if c.fetchone():
@@ -2584,11 +2736,13 @@ def save_verse():
     
     data = request.get_json()
     verse_id = data.get('verse_id')
+    verse_payload = data.get('verse') if isinstance(data, dict) else None
     
     conn, db_type = get_db()
     c = get_cursor(conn, db_type)
     
     try:
+        verse_id = ensure_verse_id(c, db_type, verse_id, verse_payload)
         now = datetime.now().isoformat()
         period_key = get_challenge_period_key()
         if db_type == 'postgres':
@@ -2975,6 +3129,128 @@ def get_mood_recommendation(mood):
     finally:
         conn.close()
 
+def _request_location_snapshot():
+    forwarded_for = request.headers.get('X-Forwarded-For', '')
+    ip = (forwarded_for.split(',')[0].strip() if forwarded_for else '') or request.headers.get('X-Real-IP') or request.remote_addr or 'unknown'
+    return {
+        "ip": ip,
+        "country": request.headers.get('CF-IPCountry') or request.headers.get('X-Country-Code') or "",
+        "region": request.headers.get('X-Region') or request.headers.get('CF-Region') or "",
+        "city": request.headers.get('X-City') or request.headers.get('CF-IPCity') or "",
+        "timezone": request.headers.get('CF-Timezone') or ""
+    }
+
+def log_user_activity(action, user_id=None, message=None, extras=None):
+    """Write user activity into audit_logs for admin dashboards."""
+    try:
+        conn, db_type = get_db()
+        c = get_cursor(conn, db_type)
+        if db_type == 'postgres':
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS audit_logs (
+                    id SERIAL PRIMARY KEY,
+                    admin_id TEXT,
+                    action TEXT,
+                    target_user_id INTEGER,
+                    details TEXT,
+                    ip_address TEXT,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+        else:
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS audit_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    admin_id TEXT,
+                    action TEXT,
+                    target_user_id INTEGER,
+                    details TEXT,
+                    ip_address TEXT,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+        payload = {
+            "message": str(message or ""),
+            "status": "success",
+            "location": _request_location_snapshot(),
+            "extras": extras if isinstance(extras, dict) else {},
+            "target": {"user_id": user_id} if user_id is not None else {}
+        }
+        details_json = json.dumps(payload, ensure_ascii=False)
+        admin_id = str(user_id) if user_id is not None else "system"
+        now_ts = datetime.now().isoformat()
+        if db_type == 'postgres':
+            c.execute("""
+                INSERT INTO audit_logs (admin_id, action, target_user_id, details, ip_address, timestamp)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (admin_id, action, user_id, details_json, payload["location"].get("ip"), now_ts))
+        else:
+            c.execute("""
+                INSERT INTO audit_logs (admin_id, action, target_user_id, details, ip_address, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (admin_id, action, user_id, details_json, payload["location"].get("ip"), now_ts))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+def ensure_verse_id(c, db_type, verse_id, verse_payload=None):
+    """Ensure a verse exists in DB and return a valid verse_id."""
+    try:
+        if verse_id:
+            if db_type == 'postgres':
+                c.execute("SELECT id FROM verses WHERE id = %s", (verse_id,))
+            else:
+                c.execute("SELECT id FROM verses WHERE id = ?", (verse_id,))
+            row = c.fetchone()
+            if row:
+                return row['id'] if hasattr(row, 'keys') else row[0]
+    except Exception:
+        pass
+
+    if not verse_payload:
+        return verse_id
+
+    ref = (verse_payload.get('reference') or verse_payload.get('ref') or '').strip()
+    text = (verse_payload.get('text') or '').strip()
+    if not ref or not text:
+        return verse_id
+
+    trans = (verse_payload.get('translation') or verse_payload.get('trans') or '').strip()
+    source = (verse_payload.get('source') or '').strip()
+    book = (verse_payload.get('book') or '').strip()
+    now = datetime.now().isoformat()
+
+    try:
+        if db_type == 'postgres':
+            c.execute("SELECT id FROM verses WHERE reference = %s AND text = %s", (ref, text))
+        else:
+            c.execute("SELECT id FROM verses WHERE reference = ? AND text = ?", (ref, text))
+        row = c.fetchone()
+        if row:
+            return row['id'] if hasattr(row, 'keys') else row[0]
+    except Exception:
+        pass
+
+    try:
+        if db_type == 'postgres':
+            c.execute("""
+                INSERT INTO verses (reference, text, translation, source, timestamp, book)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (ref, text, trans, source, now, book))
+            c.execute("SELECT id FROM verses WHERE reference = %s AND text = %s", (ref, text))
+        else:
+            c.execute("""
+                INSERT INTO verses (reference, text, translation, source, timestamp, book)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (ref, text, trans, source, now, book))
+            c.execute("SELECT id FROM verses WHERE reference = ? AND text = ?", (ref, text))
+        row = c.fetchone()
+        if row:
+            return row['id'] if hasattr(row, 'keys') else row[0]
+    except Exception:
+        pass
+    return verse_id
+
 @app.route('/api/generate-recommendation', methods=['POST'])
 def generate_rec():
     if 'user_id' not in session:
@@ -3092,7 +3368,7 @@ def get_comments(verse_id):
                         try:
                             user_name = user_row['name'] or google_name or "Anonymous"
                             user_picture = user_row['picture'] or ""
-                            user_role = user_row.get('role') or "user"
+                            user_role = user_row['role'] or "user"
                         except (TypeError, KeyError):
                             user_name = user_row[0] or google_name or "Anonymous"
                             user_picture = user_row[1] or ""
@@ -3125,6 +3401,7 @@ def get_comments(verse_id):
 
 def check_comment_restriction(user_id):
     """Check if user is restricted from commenting. Returns (is_restricted, reason, expires_at)"""
+    global RESTRICTION_SCHEMA_READY
     try:
         logger.info(f"[DEBUG] check_comment_restriction called for user_id={user_id}")
         
@@ -3133,30 +3410,32 @@ def check_comment_restriction(user_id):
         
         logger.info(f"[DEBUG] db_type={db_type}")
         
-        # Ensure table exists with appropriate syntax
-        if db_type == 'postgres':
-            c.execute("""
-                CREATE TABLE IF NOT EXISTS comment_restrictions (
-                    id SERIAL PRIMARY KEY,
-                    user_id INTEGER UNIQUE,
-                    reason TEXT,
-                    restricted_by TEXT,
-                    restricted_at TIMESTAMP,
-                    expires_at TIMESTAMP
-                )
-            """)
-        else:
-            c.execute("""
-                CREATE TABLE IF NOT EXISTS comment_restrictions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER UNIQUE,
-                    reason TEXT,
-                    restricted_by TEXT,
-                    restricted_at TIMESTAMP,
-                    expires_at TIMESTAMP
-                )
-            """)
-        conn.commit()
+        if not RESTRICTION_SCHEMA_READY:
+            # Ensure table exists with appropriate syntax (once per process)
+            if db_type == 'postgres':
+                c.execute("""
+                    CREATE TABLE IF NOT EXISTS comment_restrictions (
+                        id SERIAL PRIMARY KEY,
+                        user_id INTEGER UNIQUE,
+                        reason TEXT,
+                        restricted_by TEXT,
+                        restricted_at TIMESTAMP,
+                        expires_at TIMESTAMP
+                    )
+                """)
+            else:
+                c.execute("""
+                    CREATE TABLE IF NOT EXISTS comment_restrictions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER UNIQUE,
+                        reason TEXT,
+                        restricted_by TEXT,
+                        restricted_at TIMESTAMP,
+                        expires_at TIMESTAMP
+                    )
+                """)
+            conn.commit()
+            RESTRICTION_SCHEMA_READY = True
         
         # Check for active restriction
         now = datetime.now().isoformat()
@@ -3266,6 +3545,12 @@ def post_comment():
         conn.commit()
         if comment_id:
             record_daily_action(session['user_id'], 'comment', comment_id)
+            log_user_activity(
+                "USER_COMMENT",
+                user_id=session['user_id'],
+                message="Posted a comment",
+                extras={"comment_id": comment_id, "verse_id": verse_id}
+            )
         logger.info(f"[DEBUG] Comment posted successfully, id={comment_id}")
         return jsonify({"success": True, "id": comment_id})
     except Exception as e:
@@ -3317,9 +3602,9 @@ def get_community_messages():
                 timestamp = row['timestamp']
                 google_name = row['google_name']
                 google_picture = row['google_picture']
-                db_name = row.get('name')
-                db_picture = row.get('picture')
-                db_role = row.get('role')
+                db_name = row['name']
+                db_picture = row['picture']
+                db_role = row['role']
             except (TypeError, KeyError):
                 msg_id = row[0]
                 user_id = row[1]
@@ -3400,6 +3685,12 @@ def post_community_message():
         conn.commit()
         if message_id:
             record_daily_action(session['user_id'], 'comment', message_id)
+            log_user_activity(
+                "USER_COMMUNITY",
+                user_id=session['user_id'],
+                message="Posted a community message",
+                extras={"message_id": message_id}
+            )
         return jsonify({"success": True})
     except Exception as e:
         logger.error(f"Post community error: {e}")
@@ -3590,9 +3881,22 @@ def delete_comment_api(comment_id):
     try:
         # Soft delete by setting is_deleted = 1
         if db_type == 'postgres':
+            c.execute("ALTER TABLE comment_replies ADD COLUMN IF NOT EXISTS is_deleted INTEGER DEFAULT 0")
             c.execute("UPDATE comments SET is_deleted = 1 WHERE id = %s", (comment_id,))
+            c.execute(
+                "UPDATE comment_replies SET is_deleted = 1 WHERE parent_type = %s AND parent_id = %s",
+                ('comment', comment_id)
+            )
         else:
+            try:
+                c.execute("SELECT is_deleted FROM comment_replies LIMIT 1")
+            except Exception:
+                c.execute("ALTER TABLE comment_replies ADD COLUMN is_deleted INTEGER DEFAULT 0")
             c.execute("UPDATE comments SET is_deleted = 1 WHERE id = ?", (comment_id,))
+            c.execute(
+                "UPDATE comment_replies SET is_deleted = 1 WHERE parent_type = ? AND parent_id = ?",
+                ('comment', comment_id)
+            )
         conn.commit()
         
         # Log the action
@@ -3621,9 +3925,22 @@ def delete_community_api(message_id):
     try:
         # Hard delete community messages (no is_deleted column)
         if db_type == 'postgres':
+            c.execute("ALTER TABLE comment_replies ADD COLUMN IF NOT EXISTS is_deleted INTEGER DEFAULT 0")
             c.execute("DELETE FROM community_messages WHERE id = %s", (message_id,))
+            c.execute(
+                "UPDATE comment_replies SET is_deleted = 1 WHERE parent_type = %s AND parent_id = %s",
+                ('community', message_id)
+            )
         else:
+            try:
+                c.execute("SELECT is_deleted FROM comment_replies LIMIT 1")
+            except Exception:
+                c.execute("ALTER TABLE comment_replies ADD COLUMN is_deleted INTEGER DEFAULT 0")
             c.execute("DELETE FROM community_messages WHERE id = ?", (message_id,))
+            c.execute(
+                "UPDATE comment_replies SET is_deleted = 1 WHERE parent_type = ? AND parent_id = ?",
+                ('community', message_id)
+            )
         conn.commit()
         
         # Log the action
@@ -3888,13 +4205,13 @@ def get_notifications():
         for row in rows:
             if hasattr(row, 'keys'):
                 out.append({
-                    "id": row.get('id'),
-                    "title": row.get('title') or 'Notification',
-                    "message": row.get('message') or '',
-                    "type": row.get('notif_type') or 'announcement',
-                    "source": row.get('source') or 'admin',
-                    "is_read": bool(row.get('is_read') or 0),
-                    "created_at": row.get('created_at')
+                    "id": row['id'],
+                    "title": row['title'] or 'Notification',
+                    "message": row['message'] or '',
+                    "type": row['notif_type'] or 'announcement',
+                    "source": row['source'] or 'admin',
+                    "is_read": bool(row['is_read'] or 0),
+                    "created_at": row['created_at']
                 })
             else:
                 out.append({

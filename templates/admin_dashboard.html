@@ -937,16 +937,6 @@
                     <div class="stat-label">Active Users Now</div>
                     <div class="stat-value" id="statActiveNow">0</div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-icon">&#128200;</div>
-                    <div class="stat-label">Conversion Rate</div>
-                    <div class="stat-value" id="statConversion">0%</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-icon">&#128181;</div>
-                    <div class="stat-label">Revenue</div>
-                    <div class="stat-value" id="statRevenue">$0.00</div>
-                </div>
             </div>
 
             <!-- Quick Actions -->
@@ -983,24 +973,6 @@
                 </div>
             </div>
 
-            <div class="panel">
-                <div class="panel-title">&#128202; Growth & Retention</div>
-                <div class="chart-grid">
-                    <div class="chart-card">
-                        <div class="chart-title">Daily Active Users</div>
-                        <div class="spark-bars" id="dauBars"></div>
-                    </div>
-                    <div class="chart-card">
-                        <div class="chart-title">User Growth</div>
-                        <div class="spark-bars" id="growthBars"></div>
-                    </div>
-                </div>
-                <div class="admin-form-grid" style="margin-top:16px;">
-                    <div class="mini-item"><strong>Retention D1:</strong> <span id="retentionD1">0%</span></div>
-                    <div class="mini-item"><strong>Retention D7:</strong> <span id="retentionD7">0%</span></div>
-                    <div class="mini-item"><strong>Retention D30:</strong> <span id="retentionD30">0%</span></div>
-                </div>
-            </div>
 
             <div class="panel">
                 <div class="panel-title">&#128226; Admin Broadcast Tools</div>
@@ -1036,6 +1008,28 @@
                     </div>
                 </div>
                 <div style="margin-top:12px; font-size:0.82rem; color:#888;">Scheduled: <span id="scheduledCount">0</span> • Sent: <span id="sentCount">0</span></div>
+                <div class="admin-form-grid" style="margin-top:14px;">
+                    <div>
+                        <div style="font-size:0.8rem;color:#999;margin-bottom:6px;">Announcements</div>
+                        <div style="display:flex; gap:8px; margin-bottom:8px;">
+                            <button class="btn btn-sm btn-secondary" onclick="loadAnnouncementList()">Refresh</button>
+                        </div>
+                        <div id="announcementList" class="mini-list"></div>
+                    </div>
+                    <div>
+                        <div style="font-size:0.8rem;color:#999;margin-bottom:6px;">Notifications</div>
+                        <div style="display:flex; gap:8px; margin-bottom:8px;">
+                            <select id="notificationFilter" class="admin-select" style="max-width:220px;">
+                                <option value="all">All</option>
+                                <option value="push">Push</option>
+                                <option value="direct_message">Direct Message</option>
+                                <option value="announcement">Announcement</option>
+                            </select>
+                            <button class="btn btn-sm btn-secondary" onclick="loadNotificationList()">Refresh</button>
+                        </div>
+                        <div id="notificationList" class="mini-list"></div>
+                    </div>
+                </div>
             </div>
 
             <div class="panel">
@@ -1303,7 +1297,9 @@
         let restrictUserId = null;
         let selectedDuration = 'permanent';
         let selectedHours = 24;
+        let newRestrictHours = 24;
         let currentCommentTab = 'verse';
+        let settingsCanEdit = false;
 
         function toggleMenu() {
             document.getElementById('sidebar').classList.toggle('active');
@@ -1339,6 +1335,8 @@
                 loadComments(),
                 loadRecentActivity(),
                 loadAnnouncements(),
+                loadAnnouncementList(),
+                loadNotificationList(),
                 loadAdminChat()
             ]);
             showToast('Data refreshed!');
@@ -1407,14 +1405,19 @@
                 const data = await res.json();
                 if (data.error) return;
                 insightsData = data;
-                document.getElementById('statActiveNow').textContent = data.active_users_now ?? 0;
-                document.getElementById('statConversion').textContent = `${Number(data.conversion_rate || 0).toFixed(2)}%`;
-                document.getElementById('statRevenue').textContent = moneyFromCents(data.revenue_cents || 0);
-                document.getElementById('retentionD1').textContent = `${Number(data.retention?.day_1 || 0).toFixed(2)}%`;
-                document.getElementById('retentionD7').textContent = `${Number(data.retention?.day_7 || 0).toFixed(2)}%`;
-                document.getElementById('retentionD30').textContent = `${Number(data.retention?.day_30 || 0).toFixed(2)}%`;
-                document.getElementById('scheduledCount').textContent = data.announcements_scheduled ?? 0;
-                document.getElementById('sentCount').textContent = data.announcements_sent ?? 0;
+                const activeNowEl = document.getElementById('statActiveNow');
+                if (activeNowEl) activeNowEl.textContent = data.active_users_now ?? 0;
+                // Conversion rate + revenue removed from dashboard UI
+                const retentionD1 = document.getElementById('retentionD1');
+                if (retentionD1) retentionD1.textContent = `${Number(data.retention?.day_1 || 0).toFixed(2)}%`;
+                const retentionD7 = document.getElementById('retentionD7');
+                if (retentionD7) retentionD7.textContent = `${Number(data.retention?.day_7 || 0).toFixed(2)}%`;
+                const retentionD30 = document.getElementById('retentionD30');
+                if (retentionD30) retentionD30.textContent = `${Number(data.retention?.day_30 || 0).toFixed(2)}%`;
+                const scheduledEl = document.getElementById('scheduledCount');
+                if (scheduledEl) scheduledEl.textContent = data.announcements_scheduled ?? 0;
+                const sentEl = document.getElementById('sentCount');
+                if (sentEl) sentEl.textContent = data.announcements_sent ?? 0;
 
                 renderSparkBars('dauBars', data.daily_active_users || []);
                 renderSparkBars('growthBars', data.user_growth || []);
@@ -1540,6 +1543,96 @@
             } catch (_) {}
         }
 
+        async function loadAnnouncementList() {
+            const box = document.getElementById('announcementList');
+            if (!box) return;
+            try {
+                const res = await fetch('/admin/api/announcements');
+                const rows = await res.json();
+                if (!Array.isArray(rows) || !rows.length) {
+                    box.innerHTML = '<div class="empty-state">No announcements</div>';
+                    return;
+                }
+                box.innerHTML = rows.map(r => {
+                    const status = String(r.status || 'unknown').toUpperCase();
+                    const when = r.scheduled_for || r.sent_at || r.created_at;
+                    const time = when ? formatLocalTime(when) : '-';
+                    return `
+                        <div class="mini-item" style="display:flex; justify-content:space-between; gap:10px;">
+                            <div>
+                                <strong>${escapeHtml(r.title || 'Announcement')}</strong>
+                                <div style="color:#888;font-size:0.78rem;">ID: ${escapeHtml(String(r.id))} • ${escapeHtml(status)} • ${time}</div>
+                                <div style="margin-top:4px;color:#9ca3af;font-size:0.8rem;">${escapeHtml(r.message || '')}</div>
+                            </div>
+                            <div>
+                                <button class="btn btn-sm btn-danger" onclick="deleteAnnouncement(${r.id})">Delete</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } catch (err) {
+                box.innerHTML = '<div class="empty-state">Failed to load announcements</div>';
+            }
+        }
+
+        async function deleteAnnouncement(id) {
+            if (!id) return;
+            try {
+                const res = await fetch(`/admin/api/announcements/${id}`, { method: 'DELETE' });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.error || 'Failed');
+                showToast('Announcement deleted');
+                loadAnnouncements();
+                loadAnnouncementList();
+            } catch (err) {
+                showToast('Delete failed: ' + err.message);
+            }
+        }
+
+        async function loadNotificationList() {
+            const box = document.getElementById('notificationList');
+            if (!box) return;
+            const filter = document.getElementById('notificationFilter')?.value || 'all';
+            try {
+                const res = await fetch(`/admin/api/notifications?type=${encodeURIComponent(filter)}`);
+                const rows = await res.json();
+                if (!Array.isArray(rows) || !rows.length) {
+                    box.innerHTML = '<div class="empty-state">No notifications</div>';
+                    return;
+                }
+                box.innerHTML = rows.map(r => {
+                    const time = formatLocalTime(r.created_at || r.sent_at);
+                    return `
+                        <div class="mini-item" style="display:flex; justify-content:space-between; gap:10px;">
+                            <div>
+                                <strong>${escapeHtml(r.title || 'Notification')}</strong>
+                                <div style="color:#888;font-size:0.78rem;">ID: ${escapeHtml(String(r.id))} • User ID: ${escapeHtml(String(r.user_id || '-'))} • ${escapeHtml(String(r.notif_type || ''))} • ${time}</div>
+                                <div style="margin-top:4px;color:#9ca3af;font-size:0.8rem;">${escapeHtml(r.message || '')}</div>
+                            </div>
+                            <div>
+                                <button class="btn btn-sm btn-danger" onclick="deleteNotification(${r.id})">Delete</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } catch (err) {
+                box.innerHTML = '<div class="empty-state">Failed to load notifications</div>';
+            }
+        }
+
+        async function deleteNotification(id) {
+            if (!id) return;
+            try {
+                const res = await fetch(`/admin/api/notifications/${id}`, { method: 'DELETE' });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.error || 'Failed');
+                showToast('Notification deleted');
+                loadNotificationList();
+            } catch (err) {
+                showToast('Delete failed: ' + err.message);
+            }
+        }
+
         async function loadAdminChat() {
             const box = document.getElementById('adminChatBox');
             try {
@@ -1549,7 +1642,7 @@
                     box.innerHTML = '<div class="empty-state">No admin messages yet</div>';
                     return;
                 }
-                box.innerHTML = rows.map(r => `<div class="admin-chat-item"><strong>${escapeHtml(String(r.admin_role || '').toUpperCase())}</strong>: ${escapeHtml(r.message || '')}<br><small style="color:#888">${new Date(r.created_at).toLocaleString()}</small></div>`).join('');
+                box.innerHTML = rows.map(r => `<div class="admin-chat-item"><strong>${escapeHtml(String(r.admin_role || '').toUpperCase())}</strong>: ${escapeHtml(r.message || '')}<br><small style="color:#888">${formatLocalTime(r.created_at)}</small></div>`).join('');
                 box.scrollTop = box.scrollHeight;
             } catch (err) {
                 box.innerHTML = '<div class="empty-state">Failed to load chat</div>';
@@ -1670,7 +1763,7 @@
                 
                 let html = '<table><thead><tr><th>User</th><th>Reason</th><th>Expires</th><th>Actions</th></tr></thead><tbody>';
                 data.forEach(r => {
-                    const expires = r.expires_at ? new Date(r.expires_at).toLocaleString() : 'Unknown';
+                    const expires = r.expires_at ? formatLocalTime(r.expires_at) : 'Unknown';
                     html += `<tr>
                         <td>${escapeHtml(r.user_name)}<br><small style="color:#888">${escapeHtml(r.user_email)}</small></td>
                         <td>${escapeHtml(r.reason)}</td>
@@ -1707,9 +1800,9 @@
                 data.forEach(b => {
                     let duration = 'Permanent';
                     if (b.expires_at) {
-                        const expires = new Date(b.expires_at);
+                        const expires = parseTimestamp(b.expires_at);
                         const now = new Date();
-                        const diff = Math.ceil((expires - now) / (1000 * 60 * 60));
+                        const diff = expires ? Math.ceil((expires - now) / (1000 * 60 * 60)) : 0;
                         duration = diff > 24 ? `${Math.ceil(diff/24)}d` : `${diff}h`;
                     }
                     html += `<tr>
@@ -1758,7 +1851,7 @@
                         <div class="comment-card">
                             <div class="comment-header">
                                 <span><strong>${escapeHtml(c.user_name)}</strong></span>
-                                <span>${new Date(c.timestamp).toLocaleString()}</span>
+                                <span>${formatLocalTime(c.timestamp)}</span>
                             </div>
                             <div class="comment-text">${escapeHtml(c.text)}</div>
                             <div style="font-size:0.82rem;color:#888;margin:6px 0;">
@@ -1794,11 +1887,8 @@
                 ]);
                 const data = await settingsRes.json();
                 const systemData = await systemRes.json();
-                
-                if (!data.can_edit) {
-                    container.innerHTML = '<div class="empty-state">Only owners can view/edit settings</div>';
-                    return;
-                }
+                const canEdit = !!data.can_edit;
+                settingsCanEdit = canEdit;
                 
                 const currentInterval = parseInt(systemData.verse_interval || 60, 10);
                 const currentAutoRefresh = parseInt(systemData.auto_refresh_seconds || 30, 10);
@@ -1810,6 +1900,7 @@
                 container.innerHTML = `
                     <div class="settings-meta"><strong>Site:</strong> ${data.site_name}</div>
                     <div class="settings-meta"><strong>Maintenance:</strong> ${data.maintenance_mode}</div>
+                    ${canEdit ? '' : '<div class="empty-state">View only. Owner access required to edit settings.</div>'}
                     <div class="interval-setting-card">
                         <div class="interval-setting-title">Verse Refresh Interval</div>
                         <div class="interval-setting-help">Controls how often new verses are generated for users.</div>
@@ -1821,7 +1912,7 @@
                                 <option value="300" ${currentInterval === 300 ? 'selected' : ''}>5 minutes</option>
                                 <option value="600" ${currentInterval === 600 ? 'selected' : ''}>10 minutes</option>
                             </select>
-                            <button class="btn btn-primary" onclick="saveDashboardInterval()">Save Interval</button>
+                            <button class="btn btn-primary" onclick="saveDashboardInterval()" ${canEdit ? '' : 'disabled'}>Save Interval</button>
                         </div>
                     </div>
                     <div class="settings-grid">
@@ -1873,7 +1964,7 @@
                             <div class="setting-help">Temporarily lock the main website for upgrades.</div>
                         </div>
                     </div>
-                    <button class="btn btn-primary" onclick="saveFeaturedSettings()">Save Featured Settings</button>
+                    <button class="btn btn-primary" onclick="saveFeaturedSettings()" ${canEdit ? '' : 'disabled'}>Save Featured Settings</button>
                     <h4 style="margin-bottom:15px;">&#128274; Role Codes:</h4>
                     <div style="font-family:monospace;background:rgba(0,0,0,0.3);padding:15px;border-radius:8px;line-height:2;">
                         <div>Host: ${data.codes.host}</div>
@@ -1891,6 +1982,10 @@
         }
 
         async function saveDashboardInterval() {
+            if (!settingsCanEdit) {
+                showToast('Owner access required');
+                return;
+            }
             const select = document.getElementById('dashboardVerseInterval');
             if (!select) return;
             const interval = parseInt(select.value, 10);
@@ -1913,6 +2008,10 @@
         }
 
         async function saveFeaturedSettings() {
+            if (!settingsCanEdit) {
+                showToast('Owner access required');
+                return;
+            }
             const payload = {
                 auto_refresh_seconds: parseInt(document.getElementById('adminAutoRefreshSeconds')?.value || '30', 10),
                 audit_retention_days: parseInt(document.getElementById('adminAuditRetentionDays')?.value || '90', 10),
@@ -1932,6 +2031,27 @@
             } catch (err) {
                 showToast('Error: ' + err.message);
             }
+        }
+
+        function normalizeTimestamp(ts) {
+            if (!ts) return null;
+            const raw = String(ts).trim();
+            if (!raw) return null;
+            const hasZone = /[zZ]|[+-]\d{2}:\d{2}$/.test(raw);
+            const cleaned = raw.includes('T') ? raw : raw.replace(' ', 'T');
+            return hasZone ? cleaned : `${cleaned}Z`;
+        }
+
+        function parseTimestamp(ts) {
+            const normalized = normalizeTimestamp(ts);
+            if (!normalized) return null;
+            const d = new Date(normalized);
+            return Number.isNaN(d.getTime()) ? null : d;
+        }
+
+        function formatLocalTime(ts) {
+            const d = parseTimestamp(ts);
+            return d ? d.toLocaleString() : '-';
         }
 
         function formatLocation(location, fallbackIp) {
@@ -1955,12 +2075,13 @@
         function renderAuditTable(rows) {
             let html = '<table><thead><tr><th>Time</th><th>Admin</th><th>Action</th><th>Status</th><th>Target</th><th>Location</th><th>Details</th><th>Extras</th></tr></thead><tbody>';
             rows.forEach(l => {
-                const time = l.timestamp ? new Date(l.timestamp).toLocaleString() : '-';
+                const time = formatLocalTime(l.timestamp);
                 const statusText = String(l.status || 'unknown').toLowerCase();
                 const statusColor = statusText === 'success' ? '#48bb78' : (statusText === 'failed' ? '#f56565' : '#ed8936');
+                const targetId = l.target_user_id ? String(l.target_user_id) : '';
                 const target = l.target_name
-                    ? `${escapeHtml(l.target_name)}${l.target_email ? `<br><small style=\"color:#888\">${escapeHtml(l.target_email)}</small>` : ''}${l.target_role ? `<br><small style=\"color:#888\">Role: ${escapeHtml(l.target_role)}</small>` : ''}`
-                    : (l.target_user_id ? `User #${escapeHtml(String(l.target_user_id))}` : '-');
+                    ? `${escapeHtml(l.target_name)}${l.target_email ? `<br><small style=\"color:#888\">${escapeHtml(l.target_email)}</small>` : ''}${l.target_role ? `<br><small style=\"color:#888\">Role: ${escapeHtml(l.target_role)}</small>` : ''}${targetId ? `<br><small style=\"color:#888\">User ID: ${escapeHtml(targetId)}</small>` : ''}`
+                    : (targetId ? `User #${escapeHtml(targetId)}` : '-');
                 const detailsText = `${escapeHtml(l.details || '-')}${l.reason ? `<br><small style=\"color:#888\">Reason: ${escapeHtml(l.reason)}</small>` : ''}${l.duration ? `<br><small style=\"color:#888\">Duration: ${escapeHtml(l.duration)}</small>` : ''}`;
                 html += `<tr>
                     <td>${time}</td>
@@ -2017,7 +2138,7 @@
             }
             let html = '<table><thead><tr><th>User</th><th>Reason</th><th>Expires</th><th>Actions</th></tr></thead><tbody>';
             rows.forEach(r => {
-                const expires = r.expires_at ? new Date(r.expires_at).toLocaleString() : 'Unknown';
+                const expires = r.expires_at ? formatLocalTime(r.expires_at) : 'Unknown';
                 html += `<tr>
                     <td>${escapeHtml(r.user_name)}<br><small style="color:#888">${escapeHtml(r.user_email)}</small></td>
                     <td>${escapeHtml(r.reason)}</td>
@@ -2040,7 +2161,8 @@
                     String(b.reason || '').toLowerCase().includes(q);
                 if (!matchesText) return false;
                 if (!banType) return true;
-                const isTemporary = !!b.expires_at && (new Date(b.expires_at).getTime() > now);
+                const expDt = b.expires_at ? parseTimestamp(b.expires_at) : null;
+                const isTemporary = !!expDt && (expDt.getTime() > now);
                 return banType === 'temporary' ? isTemporary : !isTemporary;
             });
 
@@ -2053,8 +2175,8 @@
             rows.forEach(b => {
                 let duration = 'Permanent';
                 if (b.expires_at) {
-                    const expires = new Date(b.expires_at);
-                    const diff = Math.ceil((expires - new Date()) / (1000 * 60 * 60));
+                    const expires = parseTimestamp(b.expires_at);
+                    const diff = expires ? Math.ceil((expires - new Date()) / (1000 * 60 * 60)) : 0;
                     duration = diff > 24 ? `${Math.ceil(diff / 24)}d` : `${diff}h`;
                 }
                 html += `<tr>
@@ -2077,7 +2199,7 @@
             const fromTs = fromDate ? new Date(fromDate + 'T00:00:00').getTime() : null;
             const toTs = toDate ? new Date(toDate + 'T23:59:59').getTime() : null;
             const rows = (allAuditLogs || []).filter(l => {
-                const ts = l.timestamp ? new Date(l.timestamp).getTime() : null;
+                const ts = l.timestamp ? (parseTimestamp(l.timestamp)?.getTime() ?? null) : null;
                 if ((fromTs || toTs) && !ts) return false;
                 if (fromTs && ts && ts < fromTs) return false;
                 if (toTs && ts && ts > toTs) return false;
@@ -2229,6 +2351,53 @@
             }
         }
 
+        // Add restriction by email (Restrictions tab)
+        function openAddRestrictionModal() {
+            document.getElementById('addRestrictionModal').classList.add('active');
+        }
+
+        function closeAddRestrictionModal() {
+            document.getElementById('addRestrictionModal').classList.remove('active');
+            document.getElementById('restrictionUserEmail').value = '';
+            document.getElementById('newRestrictReason').value = '';
+            newRestrictHours = 24;
+            document.querySelectorAll('#addRestrictionModal .duration-btn').forEach(btn => btn.classList.remove('selected'));
+            const defaultBtn = document.querySelector('#addRestrictionModal .duration-btn[data-hours="24"]');
+            if (defaultBtn) defaultBtn.classList.add('selected');
+        }
+
+        function selectNewRestrictHours(hours) {
+            newRestrictHours = hours;
+            document.querySelectorAll('#addRestrictionModal .duration-btn').forEach(btn => btn.classList.remove('selected'));
+            const btn = document.querySelector(`#addRestrictionModal .duration-btn[data-hours="${hours}"]`);
+            if (btn) btn.classList.add('selected');
+        }
+
+        async function addNewRestriction() {
+            const email = (document.getElementById('restrictionUserEmail')?.value || '').trim();
+            const reason = (document.getElementById('newRestrictReason')?.value || '').trim() || 'No reason';
+            if (!email) return showToast('User email required');
+            try {
+                const lookup = await fetch(`/admin/api/users?q=${encodeURIComponent(email)}`);
+                const users = await lookup.json();
+                if (!Array.isArray(users)) return showToast('User lookup failed');
+                const match = users.find(u => String(u.email || '').toLowerCase() === email.toLowerCase());
+                if (!match) return showToast('User not found');
+                const res = await fetch(`/admin/api/users/${match.id}/restrict`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ hours: newRestrictHours, reason })
+                });
+                const data = await res.json();
+                if (!data.success) return showToast('Failed: ' + (data.error || 'Unknown'));
+                showToast(`Restricted ${match.name || 'user'} for ${newRestrictHours}h`);
+                closeAddRestrictionModal();
+                loadAllData();
+            } catch (err) {
+                showToast('Error: ' + err.message);
+            }
+        }
+
         // Restrict functions
         function selectRestrictHours(hours) {
             selectedHours = hours;
@@ -2347,6 +2516,10 @@
             
             if (section === 'settings') loadSettings();
             if (section === 'audit') loadAuditLogs();
+            if (section === 'comments') loadComments();
+            if (section === 'restrictions') loadRestrictions();
+            if (section === 'bans') loadBans();
+            if (section === 'users') loadUsers();
         }
 
         async function logout() {
@@ -2386,21 +2559,21 @@
                 const icons = {
                     'BAN': '[B]', 'UNBAN': '[U]', 'RESTRICT_COMMENTS': '[R]', 'UNRESTRICT': '[U]',
                     'DELETE_COMMENT': '[D]', 'UPDATE_ROLE': '[ROLE]', 'ADMIN_LOGIN': '[LOGIN]',
-                    'UPDATE_SETTINGS': '[CFG]'
+                    'UPDATE_SETTINGS': '[CFG]', 'USER_LOGIN': '[LOGIN]', 'USER_COMMENT': '[C]', 'USER_COMMUNITY': '[C]'
                 };
                 
                 let html = '';
                 data.forEach(log => {
                     const icon = icons[log.action] || '[LOG]';
-                    const time = log.timestamp ? new Date(log.timestamp).toLocaleString() : '-';
+                    const time = formatLocalTime(log.timestamp);
                     const adminName = escapeHtml(log.admin_name || log.admin_id || 'system');
                     const actionName = escapeHtml((log.action || 'UNKNOWN').replace(/_/g, ' '));
                     const statusLine = `<div class="activity-details">Status: ${escapeHtml(String(log.status || 'unknown').toUpperCase())}</div>`;
                     const locationText = formatLocation(log.location, log.ip_address);
                     const locationLine = locationText !== '-' ? `<div class="activity-details">Location: ${locationText}</div>` : '';
                     const targetLine = log.target_name
-                        ? `<div class="activity-details">Target: ${escapeHtml(log.target_name)}${log.target_email ? ` (${escapeHtml(log.target_email)})` : ''}${log.target_role ? ` [${escapeHtml(log.target_role)}]` : ''}</div>`
-                        : '';
+                        ? `<div class="activity-details">Target: ${escapeHtml(log.target_name)}${log.target_email ? ` (${escapeHtml(log.target_email)})` : ''}${log.target_role ? ` [${escapeHtml(log.target_role)}]` : ''}${log.target_user_id ? ` • User ID: ${escapeHtml(String(log.target_user_id))}` : ''}</div>`
+                        : (log.target_user_id ? `<div class="activity-details">User ID: ${escapeHtml(String(log.target_user_id))}</div>` : '');
                     const reasonLine = log.reason ? `<div class="activity-details">Reason: ${escapeHtml(log.reason)}</div>` : '';
                     const durationLine = log.duration ? `<div class="activity-details">Duration: ${escapeHtml(log.duration)}</div>` : '';
                     const extrasLine = (log.extras && Object.keys(log.extras).length)
@@ -2436,10 +2609,14 @@
         loadPermissions().then(() => {
             loadAllData();
             loadRecentActivity();
+            const notifFilter = document.getElementById('notificationFilter');
+            if (notifFilter) notifFilter.addEventListener('change', loadNotificationList);
             if (adminChatPoll) clearInterval(adminChatPoll);
             adminChatPoll = setInterval(() => {
                 loadInsights();
                 loadAnnouncements();
+                loadAnnouncementList();
+                loadNotificationList();
                 loadAdminChat();
             }, 30000);
         });

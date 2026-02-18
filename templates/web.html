@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en" data-theme="light">
 <head>
     <meta charset="UTF-8">
@@ -63,11 +63,11 @@
             padding: 0;
             box-sizing: border-box;
             -webkit-tap-highlight-color: transparent;
-            font-family: "Sora", "Segoe UI", sans-serif;
+            font-family: "Sora", "Segoe UI", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
         }
 
         h1, h2, h3, .brand-text, .challenge-title, .bible-reader-title, .bible-picks-title, .auth-title {
-            font-family: "Outfit", "Sora", sans-serif;
+            font-family: "Outfit", "Sora", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
         }
 
         html {
@@ -1475,6 +1475,32 @@
             border: 1px solid var(--glass-border);
         }
 
+        .restriction-banner {
+            display: none;
+            padding: 12px 14px;
+            border-radius: 14px;
+            border: 1px solid rgba(239, 68, 68, 0.45);
+            background: rgba(239, 68, 68, 0.12);
+            color: var(--text);
+            font-size: 13px;
+            margin-bottom: 12px;
+        }
+
+        .comment-input-area.is-disabled {
+            opacity: 0.7;
+        }
+
+        .comment-input:disabled {
+            cursor: not-allowed;
+        }
+
+        .send-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
         .comment-input {
             flex: 1;
             background: transparent;
@@ -1512,6 +1538,86 @@
         .send-btn:hover {
             transform: scale(1.1);
             box-shadow: 0 4px 12px var(--primary-glow);
+        }
+
+        .notice-card {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .notice-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .notice-title {
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        .notice-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-height: 220px;
+            overflow-y: auto;
+        }
+
+        .notice-item {
+            padding: 12px 14px;
+            border-radius: 14px;
+            border: 1px solid var(--glass-border);
+            background: var(--surface-strong);
+        }
+
+        .notice-item-title {
+            font-weight: 700;
+            font-size: 14px;
+            margin-bottom: 6px;
+        }
+
+        .notice-item-meta {
+            font-size: 12px;
+            color: var(--text-tertiary);
+            margin-top: 6px;
+        }
+
+        .notice-empty {
+            font-size: 13px;
+            opacity: 0.7;
+            text-align: center;
+            padding: 16px 0;
+        }
+
+        .account-lock {
+            position: fixed;
+            inset: 0;
+            background: rgba(6, 10, 20, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            padding: 24px;
+        }
+
+        .account-lock-card {
+            max-width: 420px;
+            width: 100%;
+            text-align: center;
+            background: rgba(15, 23, 42, 0.9);
+            border: 1px solid rgba(239, 68, 68, 0.5);
+            border-radius: 20px;
+            padding: 28px;
+            color: #fff;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+        }
+
+        .account-lock-card h2 {
+            margin: 0 0 12px;
+            color: #ff6b6b;
         }
 
         .comments-list {
@@ -2238,6 +2344,27 @@
             border: 1px solid var(--glass-border);
             opacity: 0;
             transition: opacity 0.2s;
+        }
+        .achievement-tooltip .achievement-progress {
+            margin-top: 6px;
+            width: 120px;
+            height: 4px;
+            background: rgba(255,255,255,0.15);
+            border-radius: 999px;
+            overflow: hidden;
+        }
+        .achievement-tooltip .achievement-progress-fill {
+            height: 100%;
+            width: 0%;
+            background: var(--primary);
+            box-shadow: 0 0 10px var(--primary-glow);
+            transition: width 220ms ease;
+        }
+        .achievement-tooltip .achievement-progress-label {
+            margin-top: 4px;
+            font-size: 10px;
+            opacity: 0.75;
+            text-align: right;
         }
         .achievement-tooltip.visible {
             opacity: 1;
@@ -3052,6 +3179,16 @@
                     </div>
                 </div>
 
+                <div class="glass-card notice-card" id="announcementCard">
+                    <div class="notice-header">
+                        <div class="notice-title">📢 Announcements</div>
+                        <button class="bible-picks-btn secondary" type="button" onclick="markNotificationsRead()">Mark read</button>
+                    </div>
+                    <div class="notice-list" id="announcementList">
+                        <div class="notice-empty">No announcements yet.</div>
+                    </div>
+                </div>
+
                 <div class="glass-card bible-picks-card">
                     <div class="bible-picks-header">
                         <div class="bible-picks-title">📖 Popular Bible Selections</div>
@@ -3307,9 +3444,11 @@
                             <button class="emoji-btn" onclick="addEmoji('😊')">😊</button>
                         </div>
 
-                        <div class="comment-input-area">
+                        <div class="restriction-banner" id="commentRestrictionBanner"></div>
+
+                        <div class="comment-input-area" id="commentInputArea">
                             <textarea class="comment-input" id="commentInput" placeholder="Share your thoughts on this verse... Use @ to mention" rows="1" onkeydown="handleCommentKey(event)"></textarea>
-                            <button class="send-btn" onclick="postComment()">&#8593;</button>
+                            <button class="send-btn" id="commentSendBtn" onclick="postComment()">&#8593;</button>
                         </div>
 
                         <div class="comments-list" id="commentsList"></div>
@@ -3333,9 +3472,11 @@
                             <span class="tag" style="cursor: pointer;" onclick="filterCommunity('gratitude')">#gratitude</span>
                         </div>
 
-                        <div class="comment-input-area">
+                        <div class="restriction-banner" id="communityRestrictionBanner"></div>
+
+                        <div class="comment-input-area" id="communityInputArea">
                             <textarea class="comment-input" id="communityInput" placeholder="Share about life, ask for help, or offer guidance... #topic" rows="1" onkeydown="handleCommunityKey(event)"></textarea>
-                            <button class="send-btn" onclick="postCommunityMessage()">&#8593;</button>
+                            <button class="send-btn" id="communitySendBtn" onclick="postCommunityMessage()">&#8593;</button>
                         </div>
 
                         <div class="comments-list" id="communityList"></div>
@@ -3389,6 +3530,16 @@
                     <div class="stat-card">
                         <div class="stat-value" id="statReplies" style="color: var(--secondary);">0</div>
                         <div class="stat-label">Replies</div>
+                    </div>
+                </div>
+
+                <div class="glass-card notice-card" id="inboxCard" style="margin: 20px 0; padding: 24px;">
+                    <div class="notice-header">
+                        <div class="notice-title">💬 Messages</div>
+                        <button class="bible-picks-btn secondary" type="button" onclick="markNotificationsRead()">Mark read</button>
+                    </div>
+                    <div class="notice-list" id="inboxList">
+                        <div class="notice-empty">No messages yet.</div>
                     </div>
                 </div>
 
@@ -3446,7 +3597,7 @@
                                 <div class="about-progress-item"><div class="about-progress-fill" id="aboutProgressFill0"></div></div>
                                 <div class="about-progress-item"><div class="about-progress-fill" id="aboutProgressFill1"></div></div>
                             </div>
-                            <div class="about-now-playing" id="aboutNowPlaying">Slide 1/2 � Playing � Vol 100%</div>
+                            <div class="about-now-playing" id="aboutNowPlaying">Slide 1/2 • Playing • Vol 100%</div>
                             <div class="about-volume-wrap" onclick="event.stopPropagation()">
                                 <input id="aboutVolumeSlider" class="about-volume-slider" type="range" min="0" max="1" step="0.01" value="1" aria-label="Video volume" oninput="setAboutVolume(this.value)" onchange="setAboutVolume(this.value)">
                             </div>
@@ -3872,6 +4023,8 @@
             ttsEnabled: false,
             ttsSpeed: 1
         };
+        let commentRestriction = { restricted: false, reason: '', expires_at: null };
+        let notificationsCache = [];
         let themeAuto = false;
         let wakeLockHandle = null;
         
@@ -4013,6 +4166,8 @@
             updateOnlineUsers();
             updateTabThemeClass(currentTab);
             switchCommentsView('verse');
+            updateRestrictionUI();
+            setInterval(updateRestrictionUI, 60000);
             setupAboutSliderGestures();
             initAboutVideoEvents();
             initAboutVolumeControl();
@@ -4141,21 +4296,43 @@
         // Admin Functions
         let userRole = 'user';
         
+        function rolePriority(role) {
+            const map = { user: 0, host: 1, mod: 2, co_owner: 3, owner: 4 };
+            return map[String(role || 'user')] ?? 0;
+        }
+
+        function pickHigherRole(a, b) {
+            return rolePriority(b) > rolePriority(a) ? b : a;
+        }
+
         async function checkAdminStatus() {
             try {
                 const res = await fetch('/api/user_info');
                 const data = await res.json();
-                userRole = data.role || 'user';
+                const userInfoRole = data.role || 'user';
+                let effectiveRole = userInfoRole;
+                let adminSessionRole = null;
+                try {
+                    const adminRes = await fetch('/admin/api/check-session');
+                    if (adminRes.ok) {
+                        const adminData = await adminRes.json();
+                        if (adminData && adminData.role) adminSessionRole = adminData.role;
+                    }
+                } catch (_) {}
+                if (adminSessionRole) {
+                    effectiveRole = pickHigherRole(effectiveRole, adminSessionRole);
+                }
+                userRole = effectiveRole;
                 
-                if (data.is_admin || data.session_admin) {
+                if (data.is_admin || data.session_admin || adminSessionRole) {
                     isAdmin = true;
                     localStorage.setItem('bibleAppIsAdmin', 'true');
-                    localStorage.setItem('bibleAppRole', userRole);
-                    updateAdminUI();
+                    localStorage.setItem('bibleAppRole', effectiveRole);
+                    updateAdminUI(effectiveRole);
                 }
                 
                 // Always update role badge
-                updateRoleBadge(userRole);
+                updateRoleBadge(effectiveRole);
             } catch (e) {
                 console.error('Admin check failed:', e);
             }
@@ -4194,9 +4371,9 @@
             return colors[role] || '#666';
         }
 
-        function updateAdminUI() {
+        function updateAdminUI(roleOverride = null) {
             // Show role badge
-            const storedRole = localStorage.getItem('bibleAppRole') || 'user';
+            const storedRole = roleOverride || localStorage.getItem('bibleAppRole') || 'user';
             updateRoleBadge(storedRole);
             
             // Show admin-only settings
@@ -4349,6 +4526,7 @@
                 else loadComments();
                 startCommentsPolling();
                 updateOnlineUsers();
+                updateRestrictionUI();
             } else if (prevTab === 'comments') {
                 stopCommentsPolling();
             }
@@ -4379,7 +4557,10 @@
                 const res = await fetch('/api/notifications');
                 if (!res.ok) return;
                 const rows = await res.json();
-                if (!Array.isArray(rows) || !rows.length) return;
+                if (!Array.isArray(rows)) return;
+                notificationsCache = rows;
+                renderNotificationPanels(rows);
+                if (!rows.length) return;
                 const unread = rows.filter(n => !n.is_read);
                 const newest = unread[0] || rows[0];
                 if (!newest) return;
@@ -4391,6 +4572,56 @@
                     showToast(`${newest.title || 'Notification'}: ${newest.message || ''}`);
                     latestNotificationId = newest.id;
                 }
+            } catch (_) {}
+        }
+
+        function formatNotificationTime(value) {
+            if (!value) return '';
+            const dt = new Date(value);
+            if (Number.isNaN(dt.getTime())) return '';
+            return dt.toLocaleString();
+        }
+
+        function renderNotificationPanels(rows) {
+            const announcementList = document.getElementById('announcementList');
+            const inboxList = document.getElementById('inboxList');
+            if (!announcementList && !inboxList) return;
+            const announcements = rows.filter(r => (r.type || '') === 'announcement' || (r.type || '') === 'push');
+            const messages = rows.filter(r => (r.type || '') === 'direct_message');
+
+            if (announcementList) {
+                if (!announcements.length) {
+                    announcementList.innerHTML = '<div class="notice-empty">No announcements yet.</div>';
+                } else {
+                    announcementList.innerHTML = announcements.map(a => `
+                        <div class="notice-item">
+                            <div class="notice-item-title">${escapeHtml(a.title || 'Announcement')}</div>
+                            <div>${escapeHtml(a.message || '')}</div>
+                            <div class="notice-item-meta">${formatNotificationTime(a.created_at)}</div>
+                        </div>
+                    `).join('');
+                }
+            }
+
+            if (inboxList) {
+                if (!messages.length) {
+                    inboxList.innerHTML = '<div class="notice-empty">No messages yet.</div>';
+                } else {
+                    inboxList.innerHTML = messages.map(m => `
+                        <div class="notice-item">
+                            <div class="notice-item-title">${escapeHtml(m.title || 'Message')}</div>
+                            <div>${escapeHtml(m.message || '')}</div>
+                            <div class="notice-item-meta">${formatNotificationTime(m.created_at)}</div>
+                        </div>
+                    `).join('');
+                }
+            }
+        }
+
+        async function markNotificationsRead() {
+            try {
+                await fetch('/api/notifications/read', { method: 'POST' });
+                pollNotifications();
             } catch (_) {}
         }
 
@@ -4423,7 +4654,16 @@
             verseFetchInFlight = true;
             try {
                 const res = await fetch('/api/current');
-                const data = await res.json();
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok || data.error) {
+                    if (data.error === 'banned') {
+                        showAccountLock('Account Banned', data.message || 'Your account has been banned.', data.reason || '');
+                        stopVersePolling();
+                    } else if (data.error === 'maintenance') {
+                        showAccountLock('Maintenance', data.message || 'Site is under maintenance.');
+                    }
+                    return;
+                }
                 
                 if (data.verse) {
                     const nextVerseKey = String(data.verse.id || `${data.verse.ref || ''}|${data.verse.text || ''}`);
@@ -4517,7 +4757,16 @@
             const res = await fetch('/api/like', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({verse_id: currentVerse.id})
+                body: JSON.stringify({
+                    verse_id: currentVerse.id,
+                    verse: {
+                        reference: currentVerse.ref,
+                        text: currentVerse.text,
+                        translation: currentVerse.trans,
+                        source: currentVerse.source,
+                        book: currentVerse.book
+                    }
+                })
             });
             const data = await res.json();
             updateLikeUI(data.liked);
@@ -4538,7 +4787,16 @@
             const res = await fetch('/api/save', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({verse_id: currentVerse.id})
+                body: JSON.stringify({
+                    verse_id: currentVerse.id,
+                    verse: {
+                        reference: currentVerse.ref,
+                        text: currentVerse.text,
+                        translation: currentVerse.trans,
+                        source: currentVerse.source,
+                        book: currentVerse.book
+                    }
+                })
             });
             const data = await res.json();
             updateSaveUI(data.saved);
@@ -4955,7 +5213,15 @@
         async function loadComments() {
             if (!currentVerse) return;
             const res = await fetch(`/api/comments/${currentVerse.id}`, { cache: 'no-store' });
-            const comments = await res.json();
+            const data = await res.json().catch(() => ([]));
+            if (!res.ok || data.error) {
+                if (data.error === 'banned') {
+                    showAccountLock('Account Banned', data.message || 'Your account has been banned.', data.reason || '');
+                    stopVersePolling();
+                }
+                return;
+            }
+            const comments = data;
             
             const list = document.getElementById('commentsList');
             if (comments.length === 0) {
@@ -4968,33 +5234,50 @@
             if (isAdmin) {
                 document.querySelectorAll('.delete-comment-btn').forEach(btn => btn.classList.add('show'));
             }
+            applyRestrictionState();
         }
 
         async function postComment() {
             const input = document.getElementById('commentInput');
             const text = input.value.trim();
             if (!text || !currentVerse) return;
+            if (commentRestriction.restricted) {
+                showToast(commentRestriction.reason ? `Chat disabled: ${commentRestriction.reason}` : 'Chat disabled');
+                return;
+            }
             
             const res = await fetch('/api/comments', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({verse_id: currentVerse.id, text: text})
             });
-            
-            if (res.ok) {
-                input.value = '';
-                input.style.height = 'auto';
-                loadComments();
-                loadProfileStats();
-                if (settings.notifications) showToast('Comment posted!');
-                trackDailyAction('comment');
+
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || data.error) {
+                showToast(data.message || data.error || 'Comment failed');
+                if (data.error === 'restricted') updateRestrictionUI();
+                return;
             }
+            input.value = '';
+            input.style.height = 'auto';
+            loadComments();
+            loadProfileStats();
+            if (settings.notifications) showToast('Comment posted!');
+            trackDailyAction('comment');
         }
 
         // Community Chat
         async function loadCommunityMessages() {
             const res = await fetch('/api/community', { cache: 'no-store' });
-            const messages = await res.json();
+            const data = await res.json().catch(() => ([]));
+            if (!res.ok || data.error) {
+                if (data.error === 'banned') {
+                    showAccountLock('Account Banned', data.message || 'Your account has been banned.', data.reason || '');
+                    stopVersePolling();
+                }
+                return;
+            }
+            const messages = data;
             const filtered = currentCommunityFilter === 'all'
                 ? messages
                 : messages.filter(m => String(m.text || '').toLowerCase().includes('#' + currentCommunityFilter.toLowerCase()));
@@ -5009,25 +5292,34 @@
             if (isAdmin) {
                 document.querySelectorAll('.delete-comment-btn').forEach(btn => btn.classList.add('show'));
             }
+            applyRestrictionState();
         }
 
         async function postCommunityMessage() {
             const input = document.getElementById('communityInput');
             const text = input.value.trim();
             if (!text) return;
+            if (commentRestriction.restricted) {
+                showToast(commentRestriction.reason ? `Chat disabled: ${commentRestriction.reason}` : 'Chat disabled');
+                return;
+            }
             
             const res = await fetch('/api/community', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({text: text})
             });
-            
-            if (res.ok) {
-                input.value = '';
-                input.style.height = 'auto';
-                loadCommunityMessages();
-                if (settings.notifications) showToast('Message posted!');
+
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || data.error) {
+                showToast(data.message || data.error || 'Message failed');
+                if (data.error === 'restricted') updateRestrictionUI();
+                return;
             }
+            input.value = '';
+            input.style.height = 'auto';
+            loadCommunityMessages();
+            if (settings.notifications) showToast('Message posted!');
         }
 
         function renderCommentItem(c, type) {
@@ -5036,6 +5328,7 @@
             const replies = Array.isArray(c.replies) ? c.replies : [];
             const role = (c.user_role || 'user').toLowerCase();
             const roleDisplay = role.replace('_', ' ');
+            const replyDisabled = commentRestriction.restricted ? 'disabled' : '';
             
             return `
                 <div class="comment-item" id="${type}-${c.id}">
@@ -5055,12 +5348,12 @@
                         <button class="reaction-btn" onclick="addReaction(${c.id}, '${type}', 'heart', this)">❤️ ${reactions['heart'] || 0}</button>
                         <button class="reaction-btn" onclick="addReaction(${c.id}, '${type}', 'pray', this)">🙏 ${reactions['pray'] || 0}</button>
                         <button class="reaction-btn" onclick="addReaction(${c.id}, '${type}', 'cross', this)">✝️ ${reactions['cross'] || 0}</button>
-                        <button class="reply-btn" onclick="showReplyBox(${c.id}, '${type}')">Reply (${c.reply_count || replies.length || 0})</button>
+                        <button class="reply-btn" ${replyDisabled} onclick="showReplyBox(${c.id}, '${type}')">Reply (${c.reply_count || replies.length || 0})</button>
                     </div>
                     <div class="comment-replies" id="replies-${type}-${c.id}">${renderReplies(replies)}</div>
                     <div class="reply-input-area" id="reply-box-${type}-${c.id}" style="display: none;">
-                        <input type="text" class="comment-input" placeholder="Write a reply..." id="reply-input-${type}-${c.id}" onkeydown="if(event.key==='Enter')postReply(${c.id}, '${type}')">
-                        <button class="send-btn" onclick="postReply(${c.id}, '${type}')">Send</button>
+                        <input type="text" class="comment-input" placeholder="Write a reply..." id="reply-input-${type}-${c.id}" ${replyDisabled} onkeydown="if(event.key==='Enter')postReply(${c.id}, '${type}')">
+                        <button class="send-btn" ${replyDisabled} onclick="postReply(${c.id}, '${type}')">Send</button>
                     </div>
                 </div>
             `;
@@ -5099,8 +5392,14 @@
                 const res = await fetch(endpoint, {method: 'DELETE'});
                 
                 if (res.ok) {
-                    document.getElementById(`${type}-${id}`).remove();
+                    const row = document.getElementById(`${type}-${id}`);
+                    if (row) row.remove();
                     showToast('Deleted successfully');
+                    if (type === 'community') {
+                        loadCommunityMessages();
+                    } else {
+                        loadComments();
+                    }
                     loadProfileStats();
                 }
             } catch (e) {
@@ -5115,6 +5414,23 @@
         }
 
         // Profile Stats
+        function parseCreatedAt(value) {
+            if (!value) return null;
+            if (typeof value === 'number') {
+                const ms = value > 1e12 ? value : value * 1000;
+                const d = new Date(ms);
+                return Number.isNaN(d.getTime()) ? null : d;
+            }
+            const str = String(value).trim();
+            if (!str) return null;
+            let d = new Date(str);
+            if (Number.isNaN(d.getTime())) {
+                d = new Date(str.replace(' ', 'T'));
+            }
+            if (Number.isNaN(d.getTime())) return null;
+            return d;
+        }
+
         async function loadProfileStats() {
             const res = await fetch('/api/stats');
             const data = await res.json();
@@ -5129,9 +5445,22 @@
             const userRes = await fetch('/api/user_info');
             const userData = await userRes.json();
             
-            if (userData.created_at) {
-                const date = new Date(userData.created_at);
-                document.getElementById('memberSince').textContent = date.toLocaleDateString();
+            const memberEl = document.getElementById('memberSince');
+            if (memberEl) {
+                const date = parseCreatedAt(userData.created_at);
+                memberEl.textContent = date ? date.toLocaleDateString() : '—';
+            }
+
+            const roleTag = document.getElementById('roleTag');
+            if (roleTag) {
+                const baseRole = String(userData.role || 'user');
+                const effectiveRole = pickHigherRole(baseRole, userRole || baseRole);
+                if (effectiveRole && effectiveRole !== 'user') {
+                    roleTag.style.display = 'inline-block';
+                    roleTag.textContent = effectiveRole.replace('_', ' ').toUpperCase();
+                } else {
+                    roleTag.style.display = 'none';
+                }
             }
             
             // Load new profile features
@@ -5209,60 +5538,71 @@
         }
 
         // 2. ACHIEVEMENT BADGES
-        const ACHIEVEMENTS = [
-            // Like Achievements
-            { id: 'first_like', icon: '❤️', name: 'First Love', desc: 'Like your first verse', check: (d) => d.liked >= 1 },
-            { id: 'liker_50', icon: '💖', name: 'Appreciator', desc: 'Like 50 verses', check: (d) => d.liked >= 50 },
-            { id: 'liker_200', icon: '💗', name: 'Enthusiast', desc: 'Like 200 verses', check: (d) => d.liked >= 200 },
-            { id: 'liker_500', icon: '💝', name: 'Devoted', desc: 'Like 500 verses', check: (d) => d.liked >= 500 },
-            
-            // Save Achievements
-            { id: 'collector', icon: '📚', name: 'Collector', desc: 'Save 10 verses', check: (d) => d.saved >= 10 },
-            { id: 'librarian', icon: '🏛️', name: 'Librarian', desc: 'Save 50 verses', check: (d) => d.saved >= 50 },
-            { id: 'archivist', icon: '📜', name: 'Archivist', desc: 'Save 150 verses', check: (d) => d.saved >= 150 },
-            { id: 'curator', icon: '🏺', name: 'Curator', desc: 'Save 300 verses', check: (d) => d.saved >= 300 },
-            
-            // Comment Achievements
-            { id: 'first_comment', icon: '💬', name: 'Voice', desc: 'Post a comment', check: (d) => d.comments >= 1 },
-            { id: 'conversationalist', icon: '🗣️', name: 'Chatty', desc: 'Post 25 comments', check: (d) => d.comments >= 25 },
-            { id: 'storyteller', icon: '📖', name: 'Storyteller', desc: 'Post 75 comments', check: (d) => d.comments >= 75 },
-            { id: 'oracle', icon: '🔮', name: 'Oracle', desc: 'Post 150 comments', check: (d) => d.comments >= 150 },
-            
-            // View/Explorer Achievements
-            { id: 'explorer', icon: '🔍', name: 'Explorer', desc: 'View 100 verses', check: (d) => d.total_verses >= 100 },
-            { id: 'scholar', icon: '🎓', name: 'Scholar', desc: 'View 500 verses', check: (d) => d.total_verses >= 500 },
-            { id: 'sage', icon: '📿', name: 'Sage', desc: 'View 1000 verses', check: (d) => d.total_verses >= 1000 },
-            { id: 'master', icon: '👑', name: 'Master', desc: 'View 2500 verses', check: (d) => d.total_verses >= 2500 },
-            
-            // Streak Achievements
-            { id: 'three_day_streak', icon: '🔥', name: 'On Fire', desc: '3 day streak', check: (d) => {
-                const s = JSON.parse(localStorage.getItem('verseStreak') || '{}');
-                return (s.streak || 0) >= 3;
-            }},
-            { id: 'week_warrior', icon: '⚔️', name: 'Warrior', desc: '7 day streak', check: (d) => {
-                const s = JSON.parse(localStorage.getItem('verseStreak') || '{}');
-                return (s.streak || 0) >= 7;
-            }},
-            { id: 'fortnight', icon: '🔥', name: 'Unstoppable', desc: '14 day streak', check: (d) => {
-                const s = JSON.parse(localStorage.getItem('verseStreak') || '{}');
-                return (s.streak || 0) >= 14;
-            }},
-            { id: 'month_master', icon: '📅', name: 'Month Master', desc: '30 day streak', check: (d) => {
-                const s = JSON.parse(localStorage.getItem('verseStreak') || '{}');
-                return (s.streak || 0) >= 30;
-            }},
-            
-            // Share Achievements
-            { id: 'share_the_word', icon: '📢', name: 'Evangelist', desc: 'Share 5 verses', check: () => (localStorage.getItem('sharedVerses') || '').split(',').filter(x=>x).length >= 5 },
-            { id: 'spreader', icon: '🌐', name: 'Spreader', desc: 'Share 20 verses', check: () => (localStorage.getItem('sharedVerses') || '').split(',').filter(x=>x).length >= 20 },
-            { id: 'missionary', icon: '✝️', name: 'Missionary', desc: 'Share 50 verses', check: () => (localStorage.getItem('sharedVerses') || '').split(',').filter(x=>x).length >= 50 },
-            
-            // Time-based Achievements
-            { id: 'night_owl', icon: '🦉', name: 'Night Owl', desc: 'Visit after midnight', check: () => new Date().getHours() < 5 },
-            { id: 'early_bird', icon: '🌅', name: 'Early Bird', desc: 'Visit before 6am', check: () => new Date().getHours() < 6 && new Date().getHours() >= 4 }
-        ];
+function getSharedVerseCount() {
+    return (localStorage.getItem('sharedVerses') || '').split(',').filter(x => x).length;
+}
 
-        function loadAchievements(stats) {
+function getStreakCount() {
+    const s = JSON.parse(localStorage.getItem('verseStreak') || '{}');
+    return s.streak || 0;
+}
+
+const ACHIEVEMENTS = [
+    // Like Achievements
+    { id: 'first_like', icon: '❤️', name: 'First Love', desc: 'Like your first verse', goal: 1, progress: (d) => d.liked, check: (d) => d.liked >= 1 },
+    { id: 'liker_50', icon: '💖', name: 'Appreciator', desc: 'Like 50 verses', goal: 50, progress: (d) => d.liked, check: (d) => d.liked >= 50 },
+    { id: 'liker_200', icon: '💞', name: 'Enthusiast', desc: 'Like 200 verses', goal: 200, progress: (d) => d.liked, check: (d) => d.liked >= 200 },
+    { id: 'liker_500', icon: '💘', name: 'Devoted', desc: 'Like 500 verses', goal: 500, progress: (d) => d.liked, check: (d) => d.liked >= 500 },
+
+    // Save Achievements
+    { id: 'collector', icon: '🔖', name: 'Collector', desc: 'Save 10 verses', goal: 10, progress: (d) => d.saved, check: (d) => d.saved >= 10 },
+    { id: 'librarian', icon: '📚', name: 'Librarian', desc: 'Save 50 verses', goal: 50, progress: (d) => d.saved, check: (d) => d.saved >= 50 },
+    { id: 'archivist', icon: '🗄️', name: 'Archivist', desc: 'Save 150 verses', goal: 150, progress: (d) => d.saved, check: (d) => d.saved >= 150 },
+    { id: 'curator', icon: '🏛️', name: 'Curator', desc: 'Save 300 verses', goal: 300, progress: (d) => d.saved, check: (d) => d.saved >= 300 },
+
+    // Comment Achievements
+    { id: 'first_comment', icon: '💬', name: 'Voice', desc: 'Post a comment', goal: 1, progress: (d) => d.comments, check: (d) => d.comments >= 1 },
+    { id: 'conversationalist', icon: '🗣️', name: 'Chatty', desc: 'Post 25 comments', goal: 25, progress: (d) => d.comments, check: (d) => d.comments >= 25 },
+    { id: 'storyteller', icon: '📜', name: 'Storyteller', desc: 'Post 75 comments', goal: 75, progress: (d) => d.comments, check: (d) => d.comments >= 75 },
+    { id: 'oracle', icon: '🔮', name: 'Oracle', desc: 'Post 150 comments', goal: 150, progress: (d) => d.comments, check: (d) => d.comments >= 150 },
+
+    // View/Explorer Achievements
+    { id: 'explorer', icon: '🧭', name: 'Explorer', desc: 'View 100 verses', goal: 100, progress: (d) => d.total_verses, check: (d) => d.total_verses >= 100 },
+    { id: 'scholar', icon: '🎓', name: 'Scholar', desc: 'View 500 verses', goal: 500, progress: (d) => d.total_verses, check: (d) => d.total_verses >= 500 },
+    { id: 'sage', icon: '🧠', name: 'Sage', desc: 'View 1000 verses', goal: 1000, progress: (d) => d.total_verses, check: (d) => d.total_verses >= 1000 },
+    { id: 'master', icon: '👑', name: 'Master', desc: 'View 2500 verses', goal: 2500, progress: (d) => d.total_verses, check: (d) => d.total_verses >= 2500 },
+
+    // Streak Achievements
+    { id: 'three_day_streak', icon: '🔥', name: 'On Fire', desc: '3 day streak', goal: 3, progress: () => getStreakCount(), check: () => getStreakCount() >= 3 },
+    { id: 'week_warrior', icon: '🛡️', name: 'Warrior', desc: '7 day streak', goal: 7, progress: () => getStreakCount(), check: () => getStreakCount() >= 7 },
+    { id: 'fortnight', icon: '⚔️', name: 'Unstoppable', desc: '14 day streak', goal: 14, progress: () => getStreakCount(), check: () => getStreakCount() >= 14 },
+    { id: 'month_master', icon: '🏆', name: 'Month Master', desc: '30 day streak', goal: 30, progress: () => getStreakCount(), check: () => getStreakCount() >= 30 },
+
+    // Share Achievements
+    { id: 'share_the_word', icon: '📢', name: 'Evangelist', desc: 'Share 5 verses', goal: 5, progress: () => getSharedVerseCount(), check: () => getSharedVerseCount() >= 5 },
+    { id: 'spreader', icon: '🌍', name: 'Spreader', desc: 'Share 20 verses', goal: 20, progress: () => getSharedVerseCount(), check: () => getSharedVerseCount() >= 20 },
+    { id: 'missionary', icon: '✨', name: 'Missionary', desc: 'Share 50 verses', goal: 50, progress: () => getSharedVerseCount(), check: () => getSharedVerseCount() >= 50 },
+
+    // Time-based Achievements
+    { id: 'night_owl', icon: '🌙', name: 'Night Owl', desc: 'Visit after midnight', goal: 1, progress: () => (new Date().getHours() < 5 ? 1 : 0), check: () => new Date().getHours() < 5 },
+    { id: 'early_bird', icon: '🌅', name: 'Early Bird', desc: 'Visit before 6am', goal: 1, progress: () => (new Date().getHours() < 6 && new Date().getHours() >= 4 ? 1 : 0), check: () => new Date().getHours() < 6 && new Date().getHours() >= 4 }
+];
+
+function getAchievementProgress(ach, stats, isUnlocked) {
+    const goal = Math.max(1, Number(ach.goal || 1));
+    let current = 0;
+    if (typeof ach.progress === 'function') {
+        current = Number(ach.progress(stats)) || 0;
+    } else if (typeof ach.check === 'function') {
+        current = ach.check(stats) ? goal : 0;
+    }
+    if (isUnlocked) current = Math.max(current, goal);
+    const pct = Math.max(0, Math.min(100, (current / goal) * 100));
+    const label = goal > 1 ? `${Math.min(current, goal)}/${goal}` : (isUnlocked ? 'Complete' : 'Locked');
+    return { pct, label };
+}
+
+function loadAchievements(stats) {
             const unlocked = JSON.parse(localStorage.getItem('unlockedAchievements') || '[]');
             const grid = document.getElementById('achievementGrid');
             grid.innerHTML = '';
@@ -5300,10 +5640,17 @@
                 
                 // Tooltip events
                 badge.addEventListener('mouseenter', (e) => {
-                    tooltip.textContent = `${ach.name}: ${ach.desc}${isUnlocked ? ' ✓' : ' (Locked)'}`;
+                    const progress = getAchievementProgress(ach, stats, isUnlocked);
+                    tooltip.innerHTML = `
+                        <div>${ach.name}: ${ach.desc}${isUnlocked ? ' ?' : ' (Locked)'}</div>
+                        <div class="achievement-progress">
+                            <div class="achievement-progress-fill" style="width: ${progress.pct}%"></div>
+                        </div>
+                        <div class="achievement-progress-label">${progress.label}</div>
+                    `;
                     const rect = badge.getBoundingClientRect();
                     tooltip.style.left = (rect.left + rect.width/2) + 'px';
-                    tooltip.style.top = (rect.top - 30) + 'px';
+                    tooltip.style.top = (rect.top - 36) + 'px';
                     tooltip.style.transform = 'translateX(-50%)';
                     tooltip.classList.add('visible');
                 });
@@ -5535,10 +5882,13 @@
                             }
                             const now = new Date();
                             const remainingMs = Math.max(0, expiresAt.getTime() - now.getTime());
-                            const mins = Math.floor(remainingMs / 60000);
-                            const secs = Math.floor((remainingMs % 60000) / 1000);
+                            const totalMins = Math.ceil(remainingMs / 60000);
+                            const hours = Math.floor(totalMins / 60);
+                            const mins = totalMins % 60;
                             if (remainingMs > 0) {
-                                cooldownEl.textContent = `Next challenge in ${mins}m ${secs}s`;
+                                cooldownEl.textContent = hours > 0
+                                    ? `Next challenge in ${hours}h ${mins}m`
+                                    : `Next challenge in ${mins}m`;
                                 return;
                             }
                             cooldownEl.textContent = 'Next challenge starting soon...';
@@ -6206,6 +6556,10 @@
             const input = document.getElementById(`reply-input-${type}-${commentId}`) || document.getElementById(`reply-input-${commentId}`);
             if (!input) return;
             if (!input.value.trim()) return;
+            if (commentRestriction.restricted) {
+                showToast(commentRestriction.reason ? `Chat disabled: ${commentRestriction.reason}` : 'Chat disabled');
+                return;
+            }
             try {
                 const parentType = type === 'community' ? 'community' : 'comment';
                 const res = await fetch('/api/comments/replies', {
@@ -6233,6 +6587,58 @@
             }
         }
 
+        async function updateRestrictionUI() {
+            try {
+                const res = await fetch('/api/restriction_status');
+                if (!res.ok) return;
+                const data = await res.json();
+                commentRestriction = {
+                    restricted: !!data.restricted,
+                    reason: data.reason || '',
+                    expires_at: data.expires_at || null
+                };
+                applyRestrictionState();
+            } catch (_) {}
+        }
+
+        function applyRestrictionState() {
+            const banner = document.getElementById('commentRestrictionBanner');
+            const commBanner = document.getElementById('communityRestrictionBanner');
+            const commentInput = document.getElementById('commentInput');
+            const commentSend = document.getElementById('commentSendBtn');
+            const commentArea = document.getElementById('commentInputArea');
+            const communityInput = document.getElementById('communityInput');
+            const communitySend = document.getElementById('communitySendBtn');
+            const communityArea = document.getElementById('communityInputArea');
+
+            const restricted = !!commentRestriction.restricted;
+            const reason = (commentRestriction.reason || 'policy').trim();
+            const expires = commentRestriction.expires_at ? new Date(commentRestriction.expires_at) : null;
+            const untilText = expires && !Number.isNaN(expires.getTime())
+                ? ` until ${expires.toLocaleString()}`
+                : '';
+            const message = `Chat disabled: ${reason}${untilText}.`;
+
+            if (banner) {
+                banner.textContent = restricted ? message : '';
+                banner.style.display = restricted ? 'block' : 'none';
+            }
+            if (commBanner) {
+                commBanner.textContent = restricted ? message : '';
+                commBanner.style.display = restricted ? 'block' : 'none';
+            }
+            if (commentInput) commentInput.disabled = restricted;
+            if (commentSend) commentSend.disabled = restricted;
+            if (commentArea) commentArea.classList.toggle('is-disabled', restricted);
+            if (communityInput) communityInput.disabled = restricted;
+            if (communitySend) communitySend.disabled = restricted;
+            if (communityArea) communityArea.classList.toggle('is-disabled', restricted);
+
+            document.querySelectorAll('.reply-btn').forEach(btn => { btn.disabled = restricted; });
+            document.querySelectorAll('.reply-input-area .comment-input').forEach(inp => { inp.disabled = restricted; });
+            document.querySelectorAll('.reply-input-area .send-btn').forEach(btn => { btn.disabled = restricted; });
+        }
+
         function switchCommentsView(view) {
             currentCommentsView = view === 'community' ? 'community' : 'verse';
             const verseSection = document.getElementById('verseCommentsSection');
@@ -6245,6 +6651,7 @@
             if (communityBtn) communityBtn.classList.toggle('active', currentCommentsView === 'community');
             if (currentCommentsView === 'community') loadCommunityMessages();
             else loadComments();
+            applyRestrictionState();
         }
 
         function setAboutSlide(index) {
@@ -6964,6 +7371,23 @@
         }
 
         // Toast with sound
+        function showAccountLock(title, message, reason) {
+            if (document.querySelector('.account-lock')) return;
+            const overlay = document.createElement('div');
+            overlay.className = 'account-lock';
+            overlay.innerHTML = `
+                <div class="account-lock-card">
+                    <h2>${escapeHtml(title || 'Access blocked')}</h2>
+                    <p>${escapeHtml(message || 'Your access has been blocked.')}</p>
+                    ${reason ? `<div style="margin-top:12px; padding:10px; border-radius:12px; background: rgba(255,255,255,0.08);">${escapeHtml(reason)}</div>` : ''}
+                    <div style="margin-top:16px;">
+                        <button class="bible-reader-btn" onclick="window.location.href='/logout'">Logout</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+        }
+
         function showToast(msg, type = 'info', duration = 2800) {
             const toast = document.getElementById('toast');
             toast.textContent = msg;
@@ -7009,6 +7433,8 @@
     </script>
 </body>
 </html>
+
+
 
 
 

@@ -52,7 +52,7 @@ def admin_required(f):
     def decorated_function(*args, **kwargs):
         admin = get_admin_session()
         if not admin:
-            if request.is_json:
+            if request.is_json or request.path.startswith('/admin/api/'):
                 return jsonify({"error": "Admin login required"}), 401
             return redirect(url_for('admin.admin_login'))
         return f(*args, **kwargs)
@@ -203,6 +203,58 @@ def _ensure_admin_feature_tables(conn, c, db_type):
         """)
     conn.commit()
 
+def _ensure_daily_actions_schema(c, db_type):
+    cols = _get_table_columns(c, db_type, 'daily_actions')
+    if cols:
+        if db_type == 'postgres':
+            if 'user_id' not in cols:
+                c.execute("ALTER TABLE daily_actions ADD COLUMN IF NOT EXISTS user_id INTEGER")
+            if 'action' not in cols:
+                c.execute("ALTER TABLE daily_actions ADD COLUMN IF NOT EXISTS action TEXT")
+            if 'verse_id' not in cols:
+                c.execute("ALTER TABLE daily_actions ADD COLUMN IF NOT EXISTS verse_id INTEGER")
+            if 'event_date' not in cols:
+                c.execute("ALTER TABLE daily_actions ADD COLUMN IF NOT EXISTS event_date TEXT")
+            if 'timestamp' not in cols:
+                c.execute("ALTER TABLE daily_actions ADD COLUMN IF NOT EXISTS timestamp TEXT")
+        else:
+            if 'user_id' not in cols:
+                c.execute("ALTER TABLE daily_actions ADD COLUMN user_id INTEGER")
+            if 'action' not in cols:
+                c.execute("ALTER TABLE daily_actions ADD COLUMN action TEXT")
+            if 'verse_id' not in cols:
+                c.execute("ALTER TABLE daily_actions ADD COLUMN verse_id INTEGER")
+            if 'event_date' not in cols:
+                c.execute("ALTER TABLE daily_actions ADD COLUMN event_date TEXT")
+            if 'timestamp' not in cols:
+                c.execute("ALTER TABLE daily_actions ADD COLUMN timestamp TEXT")
+        return
+
+    if db_type == 'postgres':
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS daily_actions (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER,
+                action TEXT,
+                verse_id INTEGER,
+                event_date TEXT,
+                timestamp TEXT,
+                UNIQUE(user_id, action, verse_id, event_date)
+            )
+        """)
+    else:
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS daily_actions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                action TEXT,
+                verse_id INTEGER,
+                event_date TEXT,
+                timestamp TEXT,
+                UNIQUE(user_id, action, verse_id, event_date)
+            )
+        """)
+
 def _get_table_columns(c, db_type, table_name):
     """Return lowercase column names for a table."""
     cols = set()
@@ -216,7 +268,14 @@ def _get_table_columns(c, db_type, table_name):
             rows = c.fetchall()
             for row in rows:
                 if hasattr(row, 'keys'):
-                    cols.add(str(row.get('column_name', '')).lower())
+                    try:
+                        cols.add(str(row['column_name']).lower())
+                    except Exception:
+                        try:
+                            row = _row_to_dict(row)
+                            cols.add(str(row.get('column_name', '')).lower())
+                        except Exception:
+                            pass
                 else:
                     cols.add(str(row[0]).lower())
         else:
@@ -227,6 +286,37 @@ def _get_table_columns(c, db_type, table_name):
     except Exception as e:
         print(f"[WARN] Could not read columns for {table_name}: {e}")
     return cols
+
+def _row_to_dict(row):
+    if row is None:
+        return None
+    if isinstance(row, dict):
+        return row
+    if hasattr(row, 'keys'):
+        try:
+            return {k: row[k] for k in row.keys()}
+        except Exception:
+            return row
+    return row
+
+def _row_first_value(row, default=0):
+    if row is None:
+        return default
+    if isinstance(row, dict):
+        return next(iter(row.values()), default)
+    if hasattr(row, 'keys'):
+        try:
+            return row[0]
+        except Exception:
+            try:
+                keys = row.keys()
+                return row[keys[0]] if keys else default
+            except Exception:
+                return default
+    try:
+        return row[0]
+    except Exception:
+        return default
 
 def _ensure_audit_logs_schema(conn, c, db_type):
     """Create/migrate audit_logs so queries work across older DB schemas."""
@@ -433,6 +523,7 @@ def _fetch_user_personas(c, db_type, user_ids):
     personas = {}
     for row in rows:
         if hasattr(row, 'keys'):
+            row = _row_to_dict(row)
             uid = row.get('id')
             personas[uid] = {
                 "name": row.get('name') or "Unknown",
@@ -486,7 +577,7 @@ def _read_audit_logs(c, db_type, limit=100, offset=0, action=None):
     count_query = f"SELECT COUNT(*) FROM audit_logs {where_sql}"
     c.execute(count_query, tuple(params))
     total_row = c.fetchone()
-    total = (total_row[0] if not hasattr(total_row, 'keys') else list(total_row.values())[0]) if total_row else 0
+    total = int(_row_first_value(total_row, 0) or 0)
 
     limit_ph = "%s" if db_type == 'postgres' else "?"
     offset_ph = "%s" if db_type == 'postgres' else "?"
@@ -511,6 +602,7 @@ def _read_audit_logs(c, db_type, limit=100, offset=0, action=None):
     target_user_ids = set()
     admin_user_ids = set()
     for row in rows:
+        row = _row_to_dict(row)
         if hasattr(row, 'keys'):
             log = {
                 "id": row.get('id'),
@@ -604,7 +696,7 @@ def log_action(action, details="", target_user_id=None, status="success", extras
         _ensure_audit_logs_schema(conn, c, db_type)
         admin = get_admin_session()
         admin_id = admin['role'] if admin else 'unknown'
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = datetime.now().isoformat()
         payload = {
             "message": str(details or ""),
             "status": str(status or "success").lower(),
@@ -706,11 +798,18 @@ def get_stats():
                 row = c.fetchone()
                 if row is None:
                     return 0
-                # Handle both dict-like and tuple-like rows
-                if hasattr(row, 'keys'):
+                # Handle dict-like, sqlite3.Row, and tuple-like rows
+                if isinstance(row, dict):
                     return row.get('count', 0) or 0
-                else:
-                    return row[0] or 0
+                if hasattr(row, 'keys'):
+                    try:
+                        return row['count'] or 0
+                    except Exception:
+                        try:
+                            return row[0] or 0
+                        except Exception:
+                            return 0
+                return row[0] or 0
             except Exception as e:
                 print(f"[DEBUG] Query failed: {query}, error: {e}")
                 return 0
@@ -720,23 +819,63 @@ def get_stats():
             if db_type == 'postgres':
                 c.execute("CREATE TABLE IF NOT EXISTS bans (id SERIAL PRIMARY KEY, user_id INTEGER UNIQUE, reason TEXT, banned_by TEXT, banned_at TIMESTAMP, expires_at TIMESTAMP)")
                 c.execute("CREATE TABLE IF NOT EXISTS comment_restrictions (id SERIAL PRIMARY KEY, user_id INTEGER UNIQUE, reason TEXT, restricted_by TEXT, restricted_at TIMESTAMP, expires_at TIMESTAMP)")
+                c.execute("CREATE TABLE IF NOT EXISTS verses (id SERIAL PRIMARY KEY, reference TEXT, text TEXT, translation TEXT, source TEXT, timestamp TEXT, book TEXT)")
+                c.execute("CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, google_id TEXT UNIQUE, email TEXT, name TEXT, picture TEXT, created_at TEXT, is_admin INTEGER DEFAULT 0, is_banned BOOLEAN DEFAULT FALSE, ban_expires_at TIMESTAMP, ban_reason TEXT, role TEXT DEFAULT 'user')")
+                c.execute("CREATE TABLE IF NOT EXISTS likes (id SERIAL PRIMARY KEY, user_id INTEGER, verse_id INTEGER, timestamp TEXT, UNIQUE(user_id, verse_id))")
+                c.execute("CREATE TABLE IF NOT EXISTS saves (id SERIAL PRIMARY KEY, user_id INTEGER, verse_id INTEGER, timestamp TEXT, UNIQUE(user_id, verse_id))")
+                c.execute("CREATE TABLE IF NOT EXISTS comments (id SERIAL PRIMARY KEY, user_id INTEGER, verse_id INTEGER, text TEXT, timestamp TEXT, google_name TEXT, google_picture TEXT, is_deleted INTEGER DEFAULT 0)")
+                c.execute("CREATE TABLE IF NOT EXISTS community_messages (id SERIAL PRIMARY KEY, user_id INTEGER, text TEXT, timestamp TEXT, google_name TEXT, google_picture TEXT)")
+                c.execute("CREATE TABLE IF NOT EXISTS comment_replies (id SERIAL PRIMARY KEY, parent_type TEXT NOT NULL, parent_id INTEGER NOT NULL, user_id INTEGER NOT NULL, text TEXT NOT NULL, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP, google_name TEXT, google_picture TEXT, is_deleted INTEGER DEFAULT 0)")
+                c.execute("CREATE TABLE IF NOT EXISTS daily_actions (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL, action TEXT NOT NULL, verse_id INTEGER, event_date TEXT NOT NULL, timestamp TEXT)")
             else:
                 c.execute("CREATE TABLE IF NOT EXISTS bans (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER UNIQUE, reason TEXT, banned_by TEXT, banned_at TIMESTAMP, expires_at TIMESTAMP)")
                 c.execute("CREATE TABLE IF NOT EXISTS comment_restrictions (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER UNIQUE, reason TEXT, restricted_by TEXT, restricted_at TIMESTAMP, expires_at TIMESTAMP)")
+                c.execute("CREATE TABLE IF NOT EXISTS verses (id INTEGER PRIMARY KEY AUTOINCREMENT, reference TEXT, text TEXT, translation TEXT, source TEXT, timestamp TEXT, book TEXT)")
+                c.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, google_id TEXT UNIQUE, email TEXT, name TEXT, picture TEXT, created_at TEXT, is_admin INTEGER DEFAULT 0, is_banned INTEGER DEFAULT 0, ban_expires_at TEXT, ban_reason TEXT, role TEXT DEFAULT 'user')")
+                c.execute("CREATE TABLE IF NOT EXISTS likes (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, verse_id INTEGER, timestamp TEXT, UNIQUE(user_id, verse_id))")
+                c.execute("CREATE TABLE IF NOT EXISTS saves (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, verse_id INTEGER, timestamp TEXT, UNIQUE(user_id, verse_id))")
+                c.execute("CREATE TABLE IF NOT EXISTS comments (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, verse_id INTEGER, text TEXT, timestamp TEXT, google_name TEXT, google_picture TEXT, is_deleted INTEGER DEFAULT 0)")
+                c.execute("CREATE TABLE IF NOT EXISTS community_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, text TEXT, timestamp TEXT, google_name TEXT, google_picture TEXT)")
+                c.execute("CREATE TABLE IF NOT EXISTS comment_replies (id INTEGER PRIMARY KEY AUTOINCREMENT, parent_type TEXT NOT NULL, parent_id INTEGER NOT NULL, user_id INTEGER NOT NULL, text TEXT NOT NULL, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP, google_name TEXT, google_picture TEXT, is_deleted INTEGER DEFAULT 0)")
+                c.execute("CREATE TABLE IF NOT EXISTS daily_actions (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, action TEXT NOT NULL, verse_id INTEGER, event_date TEXT NOT NULL, timestamp TEXT)")
             conn.commit()
         except Exception as e:
             print(f"[DEBUG] Table creation warning: {e}")
             if db_type == 'postgres':
                 conn.rollback()
+
+        # Ensure soft-delete columns exist for comment counts
+        try:
+            if db_type == 'postgres':
+                c.execute("ALTER TABLE comments ADD COLUMN IF NOT EXISTS is_deleted INTEGER DEFAULT 0")
+                c.execute("ALTER TABLE comment_replies ADD COLUMN IF NOT EXISTS is_deleted INTEGER DEFAULT 0")
+            else:
+                try:
+                    c.execute("SELECT is_deleted FROM comments LIMIT 1")
+                except Exception:
+                    c.execute("ALTER TABLE comments ADD COLUMN is_deleted INTEGER DEFAULT 0")
+                try:
+                    c.execute("SELECT is_deleted FROM comment_replies LIMIT 1")
+                except Exception:
+                    c.execute("ALTER TABLE comment_replies ADD COLUMN is_deleted INTEGER DEFAULT 0")
+            conn.commit()
+        except Exception as e:
+            print(f"[DEBUG] Soft delete column warning: {e}")
         
         users = get_count("SELECT COUNT(*) as count FROM users")
-        bans = get_count("SELECT COUNT(*) as count FROM bans")
-        
-        # PostgreSQL uses boolean, SQLite uses integer
+        now_iso = datetime.now().isoformat()
         if db_type == 'postgres':
-            banned_users = get_count("SELECT COUNT(*) as count FROM users WHERE is_banned = TRUE")
+            bans = get_count("SELECT COUNT(*) as count FROM bans WHERE expires_at IS NULL OR expires_at > %s", (now_iso,))
+            banned_users = get_count(
+                "SELECT COUNT(*) as count FROM users WHERE is_banned = TRUE AND (ban_expires_at IS NULL OR ban_expires_at > %s)",
+                (now_iso,)
+            )
         else:
-            banned_users = get_count("SELECT COUNT(*) as count FROM users WHERE is_banned = 1")
+            bans = get_count("SELECT COUNT(*) as count FROM bans WHERE expires_at IS NULL OR expires_at > ?", (now_iso,))
+            banned_users = get_count(
+                "SELECT COUNT(*) as count FROM users WHERE is_banned = 1 AND (ban_expires_at IS NULL OR ban_expires_at > ?)",
+                (now_iso,)
+            )
         
         restricted = 0
         try:
@@ -748,7 +887,7 @@ def get_stats():
             print(f"[DEBUG] Restricted count error: {e}")
         
         verses = get_count("SELECT COUNT(*) as count FROM verses")
-        comments = get_count("SELECT COUNT(*) as count FROM comments")
+        comments = get_count("SELECT COUNT(*) as count FROM comments WHERE COALESCE(is_deleted, 0) = 0")
         community_msgs = get_count("SELECT COUNT(*) as count FROM community_messages")
         replies = get_count("SELECT COUNT(*) as count FROM comment_replies WHERE COALESCE(is_deleted, 0) = 0")
         
@@ -817,7 +956,6 @@ def get_users():
         query = f"SELECT id, name, email, role, is_admin, is_banned, created_at FROM users{where_sql} ORDER BY id DESC"
         c.execute(query, tuple(params))
         rows = c.fetchall()
-        conn.close()
         
         users = []
         for row in rows:
@@ -830,9 +968,14 @@ def get_users():
                 "is_banned": bool(row[5]),
                 "created_at": row[6] or "Unknown"
             })
+        conn.close()
         return jsonify(users)
     except Exception as e:
         print(f"[ERROR] Users: {e}")
+        try:
+            conn.close()
+        except Exception:
+            pass
         return jsonify({"error": str(e)}), 500
 
 @admin_bp.route('/api/bans')
@@ -875,7 +1018,6 @@ def get_bans():
         """)
         
         rows = c.fetchall()
-        conn.close()
         
         bans = []
         for row in rows:
@@ -889,6 +1031,37 @@ def get_bans():
                 "user_name": row[6] or "Unknown",
                 "user_email": row[7] or "No email"
             })
+        # Include users marked as banned even if bans table is empty/out of sync
+        try:
+            if db_type == 'postgres':
+                c.execute("""
+                    SELECT id, name, email, ban_reason, ban_expires_at
+                    FROM users
+                    WHERE is_banned = TRUE
+                    AND id NOT IN (SELECT user_id FROM bans)
+                """)
+            else:
+                c.execute("""
+                    SELECT id, name, email, ban_reason, ban_expires_at
+                    FROM users
+                    WHERE is_banned = 1
+                    AND id NOT IN (SELECT user_id FROM bans)
+                """)
+            extra_rows = c.fetchall()
+            for row in extra_rows:
+                bans.append({
+                    "id": None,
+                    "user_id": row[0],
+                    "reason": row[3] or "No reason",
+                    "banned_by": "system",
+                    "banned_at": None,
+                    "expires_at": row[4],
+                    "user_name": row[1] or "Unknown",
+                    "user_email": row[2] or "No email"
+                })
+        except Exception:
+            pass
+        conn.close()
         return jsonify(bans)
     except Exception as e:
         print(f"[ERROR] Bans: {e}")
@@ -1145,6 +1318,7 @@ def get_comments():
                     """, (item_type, item_id))
                 rows = c.fetchall()
                 for rr in rows:
+                    rr = _row_to_dict(rr)
                     key = (rr.get('reaction') if hasattr(rr, 'keys') else rr[0]) or ''
                     cnt = rr.get('cnt') if hasattr(rr, 'keys') else rr[1]
                     key = str(key).lower()
@@ -1167,6 +1341,7 @@ def get_comments():
                         WHERE parent_type = ? AND parent_id = ? AND COALESCE(is_deleted, 0) = 0
                     """, (item_type, item_id))
                 row = c.fetchone()
+                row = _row_to_dict(row)
                 return int((row.get('cnt') if hasattr(row, 'keys') else row[0]) if row else 0)
             except Exception:
                 return 0
@@ -1192,6 +1367,7 @@ def get_comments():
                 rows = c.fetchall()
                 result = []
                 for rr in rows:
+                    rr = _row_to_dict(rr)
                     if hasattr(rr, 'keys'):
                         result.append({
                             "text": rr.get('text') or "",
@@ -1312,17 +1488,47 @@ def delete_comment(comment_id):
         conn, db_type = get_db()
         c = conn.cursor()
         comment_type = (request.args.get('type') or 'comment').strip().lower()
+
+        # Ensure replies table has is_deleted column
+        try:
+            if db_type == 'postgres':
+                c.execute("ALTER TABLE comment_replies ADD COLUMN IF NOT EXISTS is_deleted INTEGER DEFAULT 0")
+            else:
+                c.execute("SELECT is_deleted FROM comment_replies LIMIT 1")
+        except Exception:
+            try:
+                c.execute("ALTER TABLE comment_replies ADD COLUMN is_deleted INTEGER DEFAULT 0")
+            except Exception:
+                pass
         
         if comment_type == 'community':
             if db_type == 'postgres':
                 c.execute("DELETE FROM community_messages WHERE id = %s", (comment_id,))
             else:
                 c.execute("DELETE FROM community_messages WHERE id = ?", (comment_id,))
+            try:
+                if db_type == 'postgres':
+                    c.execute("UPDATE comment_replies SET is_deleted = 1 WHERE parent_type = %s AND parent_id = %s",
+                              ('community', comment_id))
+                else:
+                    c.execute("UPDATE comment_replies SET is_deleted = 1 WHERE parent_type = ? AND parent_id = ?",
+                              ('community', comment_id))
+            except Exception:
+                pass
         else:
             if db_type == 'postgres':
                 c.execute("UPDATE comments SET is_deleted = 1 WHERE id = %s", (comment_id,))
             else:
                 c.execute("UPDATE comments SET is_deleted = 1 WHERE id = ?", (comment_id,))
+            try:
+                if db_type == 'postgres':
+                    c.execute("UPDATE comment_replies SET is_deleted = 1 WHERE parent_type = %s AND parent_id = %s",
+                              ('comment', comment_id))
+                else:
+                    c.execute("UPDATE comment_replies SET is_deleted = 1 WHERE parent_type = ? AND parent_id = ?",
+                              ('comment', comment_id))
+            except Exception:
+                pass
         conn.commit()
         conn.close()
         
@@ -1390,6 +1596,23 @@ def ban_user(user_id):
         if not can_modify_role(admin['role'], target_role):
             conn.close()
             return jsonify({"error": "Cannot ban this user"}), 403
+
+        # Ensure ban columns exist on users table for legacy DBs
+        try:
+            if db_type == 'postgres':
+                c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS ban_expires_at TIMESTAMP")
+                c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS ban_reason TEXT")
+            else:
+                try:
+                    c.execute("SELECT ban_expires_at FROM users LIMIT 1")
+                except Exception:
+                    c.execute("ALTER TABLE users ADD COLUMN ban_expires_at TEXT")
+                try:
+                    c.execute("SELECT ban_reason FROM users LIMIT 1")
+                except Exception:
+                    c.execute("ALTER TABLE users ADD COLUMN ban_reason TEXT")
+        except Exception:
+            pass
         
         if banned:
             expires_at = None
@@ -1408,7 +1631,10 @@ def ban_user(user_id):
                 expires_at = expires_at.isoformat() if expires_at else None
             
             if db_type == 'postgres':
-                c.execute("UPDATE users SET is_banned = TRUE WHERE id = %s", (user_id,))
+                c.execute(
+                    "UPDATE users SET is_banned = TRUE, ban_expires_at = %s, ban_reason = %s WHERE id = %s",
+                    (expires_at, reason, user_id)
+                )
                 c.execute("""
                     INSERT INTO bans (user_id, reason, banned_by, banned_at, expires_at)
                     VALUES (%s, %s, %s, %s, %s)
@@ -1419,7 +1645,10 @@ def ban_user(user_id):
                         expires_at = EXCLUDED.expires_at
                 """, (user_id, reason, admin['role'], datetime.now().isoformat(), expires_at))
             else:
-                c.execute("UPDATE users SET is_banned = 1 WHERE id = ?", (user_id,))
+                c.execute(
+                    "UPDATE users SET is_banned = 1, ban_expires_at = ?, ban_reason = ? WHERE id = ?",
+                    (expires_at, reason, user_id)
+                )
                 c.execute("""
                     INSERT OR REPLACE INTO bans (user_id, reason, banned_by, banned_at, expires_at)
                     VALUES (?, ?, ?, ?, ?)
@@ -1435,10 +1664,16 @@ def ban_user(user_id):
             )
         else:
             if db_type == 'postgres':
-                c.execute("UPDATE users SET is_banned = FALSE WHERE id = %s", (user_id,))
+                c.execute(
+                    "UPDATE users SET is_banned = FALSE, ban_expires_at = NULL, ban_reason = NULL WHERE id = %s",
+                    (user_id,)
+                )
                 c.execute("DELETE FROM bans WHERE user_id = %s", (user_id,))
             else:
-                c.execute("UPDATE users SET is_banned = 0 WHERE id = ?", (user_id,))
+                c.execute(
+                    "UPDATE users SET is_banned = 0, ban_expires_at = NULL, ban_reason = NULL WHERE id = ?",
+                    (user_id,)
+                )
                 c.execute("DELETE FROM bans WHERE user_id = ?", (user_id,))
             log_action(
                 "UNBAN",
@@ -1622,7 +1857,7 @@ def get_settings():
             c.execute("SELECT value FROM system_settings WHERE key = %s", ('maintenance_mode',))
         else:
             c.execute("SELECT value FROM system_settings WHERE key = ?", ('maintenance_mode',))
-        row = c.fetchone()
+        row = _row_to_dict(c.fetchone())
         if row:
             maintenance_mode = (row.get('value') if hasattr(row, 'keys') else row[0]) or maintenance_mode
         conn.close()
@@ -1651,6 +1886,7 @@ def check_session():
 
 def _dispatch_announcement_row(c, db_type, announcement_row):
     """Insert notification rows for target users and mark announcement sent."""
+    announcement_row = _row_to_dict(announcement_row)
     if hasattr(announcement_row, 'keys'):
         ann_id = announcement_row.get('id')
         title = announcement_row.get('title') or 'Announcement'
@@ -1671,6 +1907,7 @@ def _dispatch_announcement_row(c, db_type, announcement_row):
         users = c.fetchall()
         user_ids = []
         for u in users:
+            u = _row_to_dict(u)
             uid = u.get('id') if hasattr(u, 'keys') else u[0]
             if uid is not None:
                 user_ids.append(uid)
@@ -1715,6 +1952,17 @@ def get_admin_insights():
         conn, db_type = get_db()
         c = conn.cursor()
         _ensure_admin_feature_tables(conn, c, db_type)
+        _ensure_daily_actions_schema(c, db_type)
+        if db_type == 'postgres':
+            c.execute("CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, google_id TEXT UNIQUE, email TEXT, name TEXT, picture TEXT, created_at TEXT, is_admin INTEGER DEFAULT 0, is_banned BOOLEAN DEFAULT FALSE, ban_expires_at TIMESTAMP, ban_reason TEXT, role TEXT DEFAULT 'user')")
+            c.execute("CREATE TABLE IF NOT EXISTS likes (id SERIAL PRIMARY KEY, user_id INTEGER, verse_id INTEGER, timestamp TEXT, UNIQUE(user_id, verse_id))")
+            c.execute("CREATE TABLE IF NOT EXISTS saves (id SERIAL PRIMARY KEY, user_id INTEGER, verse_id INTEGER, timestamp TEXT, UNIQUE(user_id, verse_id))")
+            c.execute("CREATE TABLE IF NOT EXISTS daily_actions (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL, action TEXT NOT NULL, verse_id INTEGER, event_date TEXT NOT NULL, timestamp TEXT)")
+        else:
+            c.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, google_id TEXT UNIQUE, email TEXT, name TEXT, picture TEXT, created_at TEXT, is_admin INTEGER DEFAULT 0, is_banned INTEGER DEFAULT 0, ban_expires_at TEXT, ban_reason TEXT, role TEXT DEFAULT 'user')")
+            c.execute("CREATE TABLE IF NOT EXISTS likes (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, verse_id INTEGER, timestamp TEXT, UNIQUE(user_id, verse_id))")
+            c.execute("CREATE TABLE IF NOT EXISTS saves (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, verse_id INTEGER, timestamp TEXT, UNIQUE(user_id, verse_id))")
+            c.execute("CREATE TABLE IF NOT EXISTS daily_actions (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, action TEXT NOT NULL, verse_id INTEGER, event_date TEXT NOT NULL, timestamp TEXT)")
         c.execute("""
             CREATE TABLE IF NOT EXISTS system_settings (
                 key TEXT PRIMARY KEY,
@@ -1722,28 +1970,6 @@ def get_admin_insights():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        if db_type == 'postgres':
-            c.execute("""
-                CREATE TABLE IF NOT EXISTS daily_actions (
-                    id SERIAL PRIMARY KEY,
-                    user_id INTEGER NOT NULL,
-                    action TEXT NOT NULL,
-                    verse_id INTEGER,
-                    event_date TEXT NOT NULL,
-                    timestamp TEXT
-                )
-            """)
-        else:
-            c.execute("""
-                CREATE TABLE IF NOT EXISTS daily_actions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    action TEXT NOT NULL,
-                    verse_id INTEGER,
-                    event_date TEXT NOT NULL,
-                    timestamp TEXT
-                )
-            """)
 
         now = datetime.now()
         active_cutoff = now - timedelta(minutes=5)
@@ -1776,16 +2002,29 @@ def get_admin_insights():
         presence_rows = c.fetchall()
         active_users_now = 0
         for row in presence_rows:
+            row = _row_to_dict(row)
             last_seen = row.get('last_seen') if hasattr(row, 'keys') else row[1]
             dt = _parse_dt(last_seen)
             if dt and dt >= active_cutoff:
                 active_users_now += 1
+
+        if active_users_now == 0:
+            try:
+                if db_type == 'postgres':
+                    c.execute("SELECT COUNT(DISTINCT user_id) FROM daily_actions WHERE timestamp >= %s", (active_cutoff.isoformat(),))
+                else:
+                    c.execute("SELECT COUNT(DISTINCT user_id) FROM daily_actions WHERE timestamp >= ?", (active_cutoff.isoformat(),))
+                active_row = c.fetchone()
+                active_users_now = int(_row_first_value(active_row, 0) or 0)
+            except Exception:
+                pass
 
         # Recent signups.
         c.execute("SELECT id, name, email, role, created_at FROM users ORDER BY created_at DESC LIMIT 8")
         signup_rows = c.fetchall()
         recent_signups = []
         for row in signup_rows:
+            row = _row_to_dict(row)
             if hasattr(row, 'keys'):
                 recent_signups.append({
                     "id": row.get('id'),
@@ -1806,12 +2045,13 @@ def get_admin_insights():
         # Total users.
         c.execute("SELECT COUNT(*) FROM users")
         total_users_row = c.fetchone()
-        total_users = int(total_users_row[0] if not hasattr(total_users_row, 'keys') else list(total_users_row.values())[0] or 0)
+        total_users = int(_row_first_value(total_users_row, 0) or 0)
 
         # Daily active users (from daily_actions table).
         c.execute("""
             SELECT event_date, COUNT(DISTINCT user_id) AS cnt
             FROM daily_actions
+            WHERE user_id IS NOT NULL
             GROUP BY event_date
             ORDER BY event_date DESC
             LIMIT 14
@@ -1819,6 +2059,7 @@ def get_admin_insights():
         dau_rows = c.fetchall()
         dau_series = []
         for row in reversed(dau_rows):
+            row = _row_to_dict(row)
             if hasattr(row, 'keys'):
                 dau_series.append({"date": row.get('event_date'), "count": int(row.get('cnt') or 0)})
             else:
@@ -1829,6 +2070,7 @@ def get_admin_insights():
         created_rows = c.fetchall()
         growth_counter = defaultdict(int)
         for row in created_rows:
+            row = _row_to_dict(row)
             val = row.get('created_at') if hasattr(row, 'keys') else row[0]
             dt = _parse_dt(val)
             if dt:
@@ -1837,14 +2079,15 @@ def get_admin_insights():
         growth_series = [{"date": d, "count": growth_counter[d]} for d in growth_dates]
 
         # Retention windows from daily_actions activity.
-        c.execute("SELECT user_id, created_at FROM users")
+        c.execute("SELECT id, created_at FROM users")
         all_user_rows = c.fetchall()
-        c.execute("SELECT user_id, timestamp FROM daily_actions")
+        c.execute("SELECT user_id, timestamp FROM daily_actions WHERE user_id IS NOT NULL")
         action_rows = c.fetchall()
         active_1d = set()
         active_7d = set()
         active_30d = set()
         for row in action_rows:
+            row = _row_to_dict(row)
             uid = row.get('user_id') if hasattr(row, 'keys') else row[0]
             ts = row.get('timestamp') if hasattr(row, 'keys') else row[1]
             dt = _parse_dt(ts)
@@ -1861,6 +2104,7 @@ def get_admin_insights():
         base_users_for_7d = 0
         base_users_for_30d = 0
         for row in all_user_rows:
+            row = _row_to_dict(row)
             created_at = row.get('created_at') if hasattr(row, 'keys') else row[1]
             dt = _parse_dt(created_at)
             if dt and dt <= retention_1d_cutoff:
@@ -1885,7 +2129,7 @@ def get_admin_insights():
             ) t
         """)
         conv_row = c.fetchone()
-        converted_users = int(conv_row[0] if not hasattr(conv_row, 'keys') else list(conv_row.values())[0] or 0)
+        converted_users = int(_row_first_value(conv_row, 0) or 0)
         conversion_rate = round((converted_users / total_users) * 100, 2) if total_users else 0
 
         # Top active users by actions.
@@ -1893,6 +2137,7 @@ def get_admin_insights():
             SELECT da.user_id, COUNT(*) AS cnt, u.name, u.email
             FROM daily_actions da
             LEFT JOIN users u ON u.id = da.user_id
+            WHERE da.user_id IS NOT NULL
             GROUP BY da.user_id, u.name, u.email
             ORDER BY cnt DESC
             LIMIT 8
@@ -1900,6 +2145,7 @@ def get_admin_insights():
         top_rows = c.fetchall()
         top_active_users = []
         for row in top_rows:
+            row = _row_to_dict(row)
             if hasattr(row, 'keys'):
                 top_active_users.append({
                     "user_id": row.get('user_id'),
@@ -1919,6 +2165,7 @@ def get_admin_insights():
         c.execute("""
             SELECT action, COUNT(*) AS cnt
             FROM daily_actions
+            WHERE action IS NOT NULL
             GROUP BY action
             ORDER BY cnt DESC
             LIMIT 10
@@ -1926,6 +2173,7 @@ def get_admin_insights():
         feature_rows = c.fetchall()
         most_used_features = []
         for row in feature_rows:
+            row = _row_to_dict(row)
             if hasattr(row, 'keys'):
                 most_used_features.append({"feature": row.get('action') or "unknown", "count": int(row.get('cnt') or 0)})
             else:
@@ -1934,15 +2182,15 @@ def get_admin_insights():
         # Revenue (if donation events are being inserted externally).
         c.execute("SELECT COALESCE(SUM(amount_cents), 0) FROM donation_events WHERE status = 'paid'")
         rev_row = c.fetchone()
-        revenue_cents = int(rev_row[0] if not hasattr(rev_row, 'keys') else list(rev_row.values())[0] or 0)
+        revenue_cents = int(_row_first_value(rev_row, 0) or 0)
 
         # Scheduled/sent announcement counts.
         c.execute("SELECT COUNT(*) FROM admin_announcements WHERE status = 'scheduled'")
         scheduled_row = c.fetchone()
-        announcements_scheduled = int(scheduled_row[0] if not hasattr(scheduled_row, 'keys') else list(scheduled_row.values())[0] or 0)
+        announcements_scheduled = int(_row_first_value(scheduled_row, 0) or 0)
         c.execute("SELECT COUNT(*) FROM admin_announcements WHERE status = 'sent'")
         sent_row = c.fetchone()
-        announcements_sent = int(sent_row[0] if not hasattr(sent_row, 'keys') else list(sent_row.values())[0] or 0)
+        announcements_sent = int(_row_first_value(sent_row, 0) or 0)
 
         # Maintenance mode state
         if db_type == 'postgres':
@@ -1952,6 +2200,7 @@ def get_admin_insights():
         maint_row = c.fetchone()
         maintenance_mode = False
         if maint_row:
+            maint_row = _row_to_dict(maint_row)
             maint_val = maint_row.get('value') if hasattr(maint_row, 'keys') else maint_row[0]
             maintenance_mode = str(maint_val).strip().lower() in ('1', 'true', 'yes', 'on')
 
@@ -2001,6 +2250,7 @@ def list_announcements():
         conn.close()
         out = []
         for row in rows:
+            row = _row_to_dict(row)
             if hasattr(row, 'keys'):
                 out.append({k: row.get(k) for k in ['id', 'title', 'message', 'is_global', 'target_user_id', 'scheduled_for', 'status', 'created_by', 'created_at', 'sent_at']})
             else:
@@ -2013,6 +2263,133 @@ def list_announcements():
         print(f"[ERROR] List announcements: {e}")
         if conn:
             try:
+                conn.close()
+            except:
+                pass
+        return jsonify({"error": str(e)}), 500
+
+@admin_bp.route('/api/announcements/<int:announcement_id>', methods=['DELETE'])
+@admin_required
+@require_permission('view_audit')
+def delete_announcement(announcement_id):
+    conn = None
+    try:
+        conn, db_type = get_db()
+        c = conn.cursor()
+        _ensure_admin_feature_tables(conn, c, db_type)
+        if db_type == 'postgres':
+            c.execute("DELETE FROM admin_announcements WHERE id = %s", (announcement_id,))
+        else:
+            c.execute("DELETE FROM admin_announcements WHERE id = ?", (announcement_id,))
+        conn.commit()
+        conn.close()
+        log_action("DELETE_ANNOUNCEMENT", f"Deleted announcement #{announcement_id}", status="success")
+        return jsonify({"success": True})
+    except Exception as e:
+        print(f"[ERROR] Delete announcement: {e}")
+        if conn:
+            try:
+                conn.rollback()
+                conn.close()
+            except:
+                pass
+        return jsonify({"error": str(e)}), 500
+
+@admin_bp.route('/api/notifications', methods=['GET'])
+@admin_required
+@require_permission('view_audit')
+def list_notifications():
+    conn = None
+    try:
+        notif_type = (request.args.get('type') or 'all').strip().lower()
+        conn, db_type = get_db()
+        c = conn.cursor()
+        _ensure_admin_feature_tables(conn, c, db_type)
+        if notif_type != 'all':
+            if db_type == 'postgres':
+                c.execute("""
+                    SELECT id, user_id, title, message, notif_type, source, is_read, created_at, sent_at
+                    FROM user_notifications
+                    WHERE LOWER(notif_type) = %s
+                    ORDER BY created_at DESC
+                    LIMIT 200
+                """, (notif_type,))
+            else:
+                c.execute("""
+                    SELECT id, user_id, title, message, notif_type, source, is_read, created_at, sent_at
+                    FROM user_notifications
+                    WHERE LOWER(notif_type) = ?
+                    ORDER BY created_at DESC
+                    LIMIT 200
+                """, (notif_type,))
+        else:
+            c.execute("""
+                SELECT id, user_id, title, message, notif_type, source, is_read, created_at, sent_at
+                FROM user_notifications
+                ORDER BY created_at DESC
+                LIMIT 200
+            """)
+        rows = c.fetchall()
+        conn.close()
+        out = []
+        for row in rows:
+            row = _row_to_dict(row)
+            if hasattr(row, 'keys'):
+                out.append({
+                    "id": row.get('id'),
+                    "user_id": row.get('user_id'),
+                    "title": row.get('title') or '',
+                    "message": row.get('message') or '',
+                    "notif_type": row.get('notif_type') or '',
+                    "source": row.get('source') or '',
+                    "is_read": bool(row.get('is_read') or 0),
+                    "created_at": row.get('created_at'),
+                    "sent_at": row.get('sent_at')
+                })
+            else:
+                out.append({
+                    "id": row[0],
+                    "user_id": row[1],
+                    "title": row[2] or '',
+                    "message": row[3] or '',
+                    "notif_type": row[4] or '',
+                    "source": row[5] or '',
+                    "is_read": bool(row[6] or 0),
+                    "created_at": row[7],
+                    "sent_at": row[8] if len(row) > 8 else None
+                })
+        return jsonify(out)
+    except Exception as e:
+        print(f"[ERROR] List notifications: {e}")
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
+        return jsonify({"error": str(e)}), 500
+
+@admin_bp.route('/api/notifications/<int:notification_id>', methods=['DELETE'])
+@admin_required
+@require_permission('view_audit')
+def delete_notification(notification_id):
+    conn = None
+    try:
+        conn, db_type = get_db()
+        c = conn.cursor()
+        _ensure_admin_feature_tables(conn, c, db_type)
+        if db_type == 'postgres':
+            c.execute("DELETE FROM user_notifications WHERE id = %s", (notification_id,))
+        else:
+            c.execute("DELETE FROM user_notifications WHERE id = ?", (notification_id,))
+        conn.commit()
+        conn.close()
+        log_action("DELETE_NOTIFICATION", f"Deleted notification #{notification_id}", status="success")
+        return jsonify({"success": True})
+    except Exception as e:
+        print(f"[ERROR] Delete notification: {e}")
+        if conn:
+            try:
+                conn.rollback()
                 conn.close()
             except:
                 pass
@@ -2052,7 +2429,7 @@ def create_announcement():
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (title, message, is_global, target_user_id, scheduled_for, status, admin_role, now_iso))
-            row = c.fetchone()
+            row = _row_to_dict(c.fetchone())
             announcement_id = row.get('id') if hasattr(row, 'keys') else row[0]
         else:
             c.execute("""
@@ -2075,7 +2452,7 @@ def create_announcement():
                     FROM admin_announcements
                     WHERE id = ?
                 """, (announcement_id,))
-            ann_row = c.fetchone()
+            ann_row = _row_to_dict(c.fetchone())
             dispatched = _dispatch_announcement_row(c, db_type, ann_row)
 
         log_action(
@@ -2204,6 +2581,7 @@ def send_push_notification():
         users = c.fetchall()
         sent = 0
         for row in users:
+            row = _row_to_dict(row)
             uid = row.get('id') if hasattr(row, 'keys') else row[0]
             if db_type == 'postgres':
                 c.execute("""
@@ -2267,6 +2645,7 @@ def admin_chat():
         conn.close()
         out = []
         for row in reversed(rows):
+            row = _row_to_dict(row)
             if hasattr(row, 'keys'):
                 out.append({
                     "id": row.get('id'),
@@ -2326,6 +2705,7 @@ def get_system_settings():
         rows = c.fetchall()
         stored = {}
         for row in rows:
+            row = _row_to_dict(row)
             if hasattr(row, 'keys'):
                 stored[str(row.get('key'))] = str(row.get('value'))
             else:

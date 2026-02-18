@@ -748,7 +748,7 @@ def get_stats():
             print(f"[DEBUG] Restricted count error: {e}")
         
         verses = get_count("SELECT COUNT(*) as count FROM verses")
-        comments = get_count("SELECT COUNT(*) as count FROM comments")
+        comments = get_count("SELECT COUNT(*) as count FROM comments WHERE COALESCE(is_deleted, 0) = 0")
         community_msgs = get_count("SELECT COUNT(*) as count FROM community_messages")
         replies = get_count("SELECT COUNT(*) as count FROM comment_replies WHERE COALESCE(is_deleted, 0) = 0")
         
@@ -817,7 +817,6 @@ def get_users():
         query = f"SELECT id, name, email, role, is_admin, is_banned, created_at FROM users{where_sql} ORDER BY id DESC"
         c.execute(query, tuple(params))
         rows = c.fetchall()
-        conn.close()
         
         users = []
         for row in rows:
@@ -889,6 +888,37 @@ def get_bans():
                 "user_name": row[6] or "Unknown",
                 "user_email": row[7] or "No email"
             })
+        # Include users marked as banned even if bans table is empty/out of sync
+        try:
+            if db_type == 'postgres':
+                c.execute("""
+                    SELECT id, name, email, ban_reason, ban_expires_at
+                    FROM users
+                    WHERE is_banned = TRUE
+                    AND id NOT IN (SELECT user_id FROM bans)
+                """)
+            else:
+                c.execute("""
+                    SELECT id, name, email, ban_reason, ban_expires_at
+                    FROM users
+                    WHERE is_banned = 1
+                    AND id NOT IN (SELECT user_id FROM bans)
+                """)
+            extra_rows = c.fetchall()
+            for row in extra_rows:
+                bans.append({
+                    "id": None,
+                    "user_id": row[0],
+                    "reason": row[3] or "No reason",
+                    "banned_by": "system",
+                    "banned_at": None,
+                    "expires_at": row[4],
+                    "user_name": row[1] or "Unknown",
+                    "user_email": row[2] or "No email"
+                })
+        except Exception:
+            pass
+        conn.close()
         return jsonify(bans)
     except Exception as e:
         print(f"[ERROR] Bans: {e}")
@@ -1312,17 +1342,47 @@ def delete_comment(comment_id):
         conn, db_type = get_db()
         c = conn.cursor()
         comment_type = (request.args.get('type') or 'comment').strip().lower()
+
+        # Ensure replies table has is_deleted column
+        try:
+            if db_type == 'postgres':
+                c.execute("ALTER TABLE comment_replies ADD COLUMN IF NOT EXISTS is_deleted INTEGER DEFAULT 0")
+            else:
+                c.execute("SELECT is_deleted FROM comment_replies LIMIT 1")
+        except Exception:
+            try:
+                c.execute("ALTER TABLE comment_replies ADD COLUMN is_deleted INTEGER DEFAULT 0")
+            except Exception:
+                pass
         
         if comment_type == 'community':
             if db_type == 'postgres':
                 c.execute("DELETE FROM community_messages WHERE id = %s", (comment_id,))
             else:
                 c.execute("DELETE FROM community_messages WHERE id = ?", (comment_id,))
+            try:
+                if db_type == 'postgres':
+                    c.execute("UPDATE comment_replies SET is_deleted = 1 WHERE parent_type = %s AND parent_id = %s",
+                              ('community', comment_id))
+                else:
+                    c.execute("UPDATE comment_replies SET is_deleted = 1 WHERE parent_type = ? AND parent_id = ?",
+                              ('community', comment_id))
+            except Exception:
+                pass
         else:
             if db_type == 'postgres':
                 c.execute("UPDATE comments SET is_deleted = 1 WHERE id = %s", (comment_id,))
             else:
                 c.execute("UPDATE comments SET is_deleted = 1 WHERE id = ?", (comment_id,))
+            try:
+                if db_type == 'postgres':
+                    c.execute("UPDATE comment_replies SET is_deleted = 1 WHERE parent_type = %s AND parent_id = %s",
+                              ('comment', comment_id))
+                else:
+                    c.execute("UPDATE comment_replies SET is_deleted = 1 WHERE parent_type = ? AND parent_id = ?",
+                              ('comment', comment_id))
+            except Exception:
+                pass
         conn.commit()
         conn.close()
         
@@ -1390,6 +1450,23 @@ def ban_user(user_id):
         if not can_modify_role(admin['role'], target_role):
             conn.close()
             return jsonify({"error": "Cannot ban this user"}), 403
+
+        # Ensure ban columns exist on users table for legacy DBs
+        try:
+            if db_type == 'postgres':
+                c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS ban_expires_at TIMESTAMP")
+                c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS ban_reason TEXT")
+            else:
+                try:
+                    c.execute("SELECT ban_expires_at FROM users LIMIT 1")
+                except Exception:
+                    c.execute("ALTER TABLE users ADD COLUMN ban_expires_at TEXT")
+                try:
+                    c.execute("SELECT ban_reason FROM users LIMIT 1")
+                except Exception:
+                    c.execute("ALTER TABLE users ADD COLUMN ban_reason TEXT")
+        except Exception:
+            pass
         
         if banned:
             expires_at = None
@@ -1408,7 +1485,10 @@ def ban_user(user_id):
                 expires_at = expires_at.isoformat() if expires_at else None
             
             if db_type == 'postgres':
-                c.execute("UPDATE users SET is_banned = TRUE WHERE id = %s", (user_id,))
+                c.execute(
+                    "UPDATE users SET is_banned = TRUE, ban_expires_at = %s, ban_reason = %s WHERE id = %s",
+                    (expires_at, reason, user_id)
+                )
                 c.execute("""
                     INSERT INTO bans (user_id, reason, banned_by, banned_at, expires_at)
                     VALUES (%s, %s, %s, %s, %s)
@@ -1419,7 +1499,10 @@ def ban_user(user_id):
                         expires_at = EXCLUDED.expires_at
                 """, (user_id, reason, admin['role'], datetime.now().isoformat(), expires_at))
             else:
-                c.execute("UPDATE users SET is_banned = 1 WHERE id = ?", (user_id,))
+                c.execute(
+                    "UPDATE users SET is_banned = 1, ban_expires_at = ?, ban_reason = ? WHERE id = ?",
+                    (expires_at, reason, user_id)
+                )
                 c.execute("""
                     INSERT OR REPLACE INTO bans (user_id, reason, banned_by, banned_at, expires_at)
                     VALUES (?, ?, ?, ?, ?)
@@ -1435,10 +1518,16 @@ def ban_user(user_id):
             )
         else:
             if db_type == 'postgres':
-                c.execute("UPDATE users SET is_banned = FALSE WHERE id = %s", (user_id,))
+                c.execute(
+                    "UPDATE users SET is_banned = FALSE, ban_expires_at = NULL, ban_reason = NULL WHERE id = %s",
+                    (user_id,)
+                )
                 c.execute("DELETE FROM bans WHERE user_id = %s", (user_id,))
             else:
-                c.execute("UPDATE users SET is_banned = 0 WHERE id = ?", (user_id,))
+                c.execute(
+                    "UPDATE users SET is_banned = 0, ban_expires_at = NULL, ban_reason = NULL WHERE id = ?",
+                    (user_id,)
+                )
                 c.execute("DELETE FROM bans WHERE user_id = ?", (user_id,))
             log_action(
                 "UNBAN",

@@ -5428,6 +5428,17 @@
                 const date = parseCreatedAt(userData.created_at);
                 memberEl.textContent = date ? date.toLocaleDateString() : '—';
             }
+
+            const roleTag = document.getElementById('roleTag');
+            if (roleTag) {
+                const role = String(userData.role || 'user');
+                if (role && role !== 'user') {
+                    roleTag.style.display = 'inline-block';
+                    roleTag.textContent = role.replace('_', ' ').toUpperCase();
+                } else {
+                    roleTag.style.display = 'none';
+                }
+            }
             
             // Load new profile features
             loadStreak();

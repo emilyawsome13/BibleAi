@@ -163,6 +163,13 @@
         body.no-animations .tab-btn {
             transition: none !important;
         }
+        body.no-animations .tab-view.active,
+        body.no-animations .tab-view.active > * {
+            opacity: 1 !important;
+            transform: none !important;
+            filter: none !important;
+            animation: none !important;
+        }
 
         /* ===== PARTICLES ===== */
         .particles {

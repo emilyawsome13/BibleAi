@@ -1735,6 +1735,8 @@ def callback():
             session['role'] = user['role'] if isinstance(user, dict) else (user[10] if len(user) > 10 else 'user')
         except (TypeError, KeyError):
             session['role'] = user[10] if len(user) > 10 else 'user'
+
+        log_user_activity("USER_LOGIN", user_id=user_id, message="User login", extras={"email": email})
         
         return redirect(url_for('index'))
         
@@ -3100,6 +3102,70 @@ def get_mood_recommendation(mood):
     finally:
         conn.close()
 
+def _request_location_snapshot():
+    forwarded_for = request.headers.get('X-Forwarded-For', '')
+    ip = (forwarded_for.split(',')[0].strip() if forwarded_for else '') or request.headers.get('X-Real-IP') or request.remote_addr or 'unknown'
+    return {
+        "ip": ip,
+        "country": request.headers.get('CF-IPCountry') or request.headers.get('X-Country-Code') or "",
+        "region": request.headers.get('X-Region') or request.headers.get('CF-Region') or "",
+        "city": request.headers.get('X-City') or request.headers.get('CF-IPCity') or "",
+        "timezone": request.headers.get('CF-Timezone') or ""
+    }
+
+def log_user_activity(action, user_id=None, message=None, extras=None):
+    """Write user activity into audit_logs for admin dashboards."""
+    try:
+        conn, db_type = get_db()
+        c = get_cursor(conn, db_type)
+        if db_type == 'postgres':
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS audit_logs (
+                    id SERIAL PRIMARY KEY,
+                    admin_id TEXT,
+                    action TEXT,
+                    target_user_id INTEGER,
+                    details TEXT,
+                    ip_address TEXT,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+        else:
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS audit_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    admin_id TEXT,
+                    action TEXT,
+                    target_user_id INTEGER,
+                    details TEXT,
+                    ip_address TEXT,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+        payload = {
+            "message": str(message or ""),
+            "status": "success",
+            "location": _request_location_snapshot(),
+            "extras": extras if isinstance(extras, dict) else {},
+            "target": {"user_id": user_id} if user_id is not None else {}
+        }
+        details_json = json.dumps(payload, ensure_ascii=False)
+        admin_id = str(user_id) if user_id is not None else "system"
+        now_ts = datetime.now().isoformat()
+        if db_type == 'postgres':
+            c.execute("""
+                INSERT INTO audit_logs (admin_id, action, target_user_id, details, ip_address, timestamp)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (admin_id, action, user_id, details_json, payload["location"].get("ip"), now_ts))
+        else:
+            c.execute("""
+                INSERT INTO audit_logs (admin_id, action, target_user_id, details, ip_address, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (admin_id, action, user_id, details_json, payload["location"].get("ip"), now_ts))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
 def ensure_verse_id(c, db_type, verse_id, verse_payload=None):
     """Ensure a verse exists in DB and return a valid verse_id."""
     try:
@@ -3452,6 +3518,12 @@ def post_comment():
         conn.commit()
         if comment_id:
             record_daily_action(session['user_id'], 'comment', comment_id)
+            log_user_activity(
+                "USER_COMMENT",
+                user_id=session['user_id'],
+                message="Posted a comment",
+                extras={"comment_id": comment_id, "verse_id": verse_id}
+            )
         logger.info(f"[DEBUG] Comment posted successfully, id={comment_id}")
         return jsonify({"success": True, "id": comment_id})
     except Exception as e:
@@ -3586,6 +3658,12 @@ def post_community_message():
         conn.commit()
         if message_id:
             record_daily_action(session['user_id'], 'comment', message_id)
+            log_user_activity(
+                "USER_COMMUNITY",
+                user_id=session['user_id'],
+                message="Posted a community message",
+                extras={"message_id": message_id}
+            )
         return jsonify({"success": True})
     except Exception as e:
         logger.error(f"Post community error: {e}")

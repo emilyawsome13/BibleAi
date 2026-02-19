@@ -1908,6 +1908,37 @@ def get_settings():
 def check_session():
     admin = get_admin_session()
     if admin:
+        try:
+            user_id = session.get('user_id')
+            if user_id:
+                conn, db_type = get_db()
+                c = conn.cursor()
+                if db_type == 'postgres':
+                    c.execute("SELECT role FROM users WHERE id = %s", (user_id,))
+                else:
+                    c.execute("SELECT role FROM users WHERE id = ?", (user_id,))
+                row = c.fetchone()
+                db_role = None
+                if row:
+                    try:
+                        db_role = row['role']
+                    except Exception:
+                        db_role = row[0]
+                admin_role = (admin.get('role') or 'user').strip().lower()
+                db_role_norm = (db_role or 'user').strip().lower()
+                if ROLE_HIERARCHY.get(admin_role, 0) > ROLE_HIERARCHY.get(db_role_norm, 0):
+                    is_admin = 1 if ROLE_HIERARCHY.get(admin_role, 0) > 0 else 0
+                    if db_type == 'postgres':
+                        c.execute("UPDATE users SET role = %s, is_admin = %s WHERE id = %s", (admin_role, is_admin, user_id))
+                    else:
+                        c.execute("UPDATE users SET role = ?, is_admin = ? WHERE id = ?", (admin_role, is_admin, user_id))
+                    conn.commit()
+                conn.close()
+        except Exception:
+            try:
+                conn.close()
+            except Exception:
+                pass
         return jsonify({"logged_in": True, "role": admin['role']})
     return jsonify({"logged_in": False}), 401
 

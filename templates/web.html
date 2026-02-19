@@ -5501,8 +5501,9 @@
         }
 
         // Comments
-        async function loadComments() {
+        async function loadComments(force = false) {
             if (!currentVerse) return;
+            if (!force && isCommentsInputActive()) return;
             captureActiveReplyDraft();
             const res = await fetch(`/api/comments/${currentVerse.id}`, { cache: 'no-store' });
             const data = await res.json().catch(() => ([]));
@@ -5555,14 +5556,15 @@
             }
             input.value = '';
             input.style.height = 'auto';
-            loadComments();
+            loadComments(true);
             loadProfileStats();
             if (settings.notifications) showToast('Comment posted!');
             trackDailyAction('comment');
         }
 
         // Community Chat
-        async function loadCommunityMessages() {
+        async function loadCommunityMessages(force = false) {
+            if (!force && isCommentsInputActive()) return;
             captureActiveReplyDraft();
             const res = await fetch('/api/community', { cache: 'no-store' });
             const data = await res.json().catch(() => ([]));
@@ -5617,7 +5619,7 @@
             }
             input.value = '';
             input.style.height = 'auto';
-            loadCommunityMessages();
+            loadCommunityMessages(true);
             if (settings.notifications) showToast('Message posted!');
         }
 
@@ -6837,6 +6839,16 @@ function loadAchievements(stats) {
             }
         }
 
+        function isCommentsInputActive() {
+            if (replyActiveKey) return true;
+            const active = document.activeElement;
+            if (!active) return false;
+            const id = active.id || '';
+            if (id === 'commentInput' || id === 'communityInput') return true;
+            if (id.startsWith('reply-input-')) return true;
+            return active.closest && active.closest('.reply-input-area');
+        }
+
         let currentCommunityFilter = 'all';
         function filterCommunity(tag) {
             currentCommunityFilter = tag;
@@ -6987,9 +6999,12 @@ function loadAchievements(stats) {
                     return;
                 }
                 input.value = '';
+                const draftKey = `${type}-${commentId}`;
+                delete replyDrafts[draftKey];
                 openReplyKey = null;
-                if (parentType === 'community') loadCommunityMessages();
-                else loadComments();
+                replyActiveKey = null;
+                if (parentType === 'community') loadCommunityMessages(true);
+                else loadComments(true);
                 loadProfileStats();
                 showToast('Reply posted!');
             } catch (e) {
@@ -7321,8 +7336,10 @@ function loadAchievements(stats) {
             if (commentsRefreshInterval) clearInterval(commentsRefreshInterval);
             commentsRefreshInterval = setInterval(() => {
                 if (currentTab !== 'comments') return;
-                if (currentCommentsView === 'community') loadCommunityMessages();
-                else loadComments();
+                if (!isCommentsInputActive()) {
+                    if (currentCommentsView === 'community') loadCommunityMessages();
+                    else loadComments();
+                }
                 updateOnlineUsers();
             }, 3000);
         }

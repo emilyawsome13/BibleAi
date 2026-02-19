@@ -1821,6 +1821,7 @@
                 if (permissions.includes('change_roles')) {
                     actions += `<button class="btn btn-primary" onclick="changeRole(${u.id}, '${u.role}')">Role</button>`;
                 }
+                actions += `<button class="btn btn-secondary" onclick="openDmFromAdmin(${u.id})">DM</button>`;
                 
                 html += `<tr>
                     <td>${escapeHtml(u.name)}<br><small style="color:#888">${escapeHtml(u.email)}</small></td>
@@ -1831,6 +1832,12 @@
             });
             html += '</tbody></table>';
             container.innerHTML = html;
+        }
+
+        function openDmFromAdmin(userId) {
+            if (!userId) return;
+            const url = `/?dmUser=${userId}#comments`;
+            window.open(url, '_blank');
         }
 
         function searchUsers(query) {

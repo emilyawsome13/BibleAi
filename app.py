@@ -843,6 +843,14 @@ def ensure_dm_tables(c, db_type):
                 is_read INTEGER DEFAULT 0
             )
         """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS dm_typing (
+                user_id INTEGER NOT NULL,
+                other_id INTEGER NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, other_id)
+            )
+        """)
     else:
         c.execute("""
             CREATE TABLE IF NOT EXISTS direct_messages (
@@ -852,6 +860,14 @@ def ensure_dm_tables(c, db_type):
                 message TEXT NOT NULL,
                 created_at TEXT,
                 is_read INTEGER DEFAULT 0
+            )
+        """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS dm_typing (
+                user_id INTEGER NOT NULL,
+                other_id INTEGER NOT NULL,
+                updated_at TEXT,
+                PRIMARY KEY (user_id, other_id)
             )
         """)
 
@@ -3290,7 +3306,7 @@ def db_status():
         counts = {}
         for table in [
             'users', 'verses', 'likes', 'saves', 'comments', 'comment_replies',
-            'community_messages', 'direct_messages', 'audit_logs', 'daily_actions', 'notifications'
+            'community_messages', 'direct_messages', 'dm_typing', 'audit_logs', 'daily_actions', 'notifications'
         ]:
             try:
                 c.execute(f"SELECT COUNT(*) FROM {table}")
@@ -3320,6 +3336,55 @@ def db_status_page():
         return redirect('/')
     return render_template('db_status.html')
 
+@app.route('/u/<int:user_id>')
+def public_profile(user_id):
+    if 'user_id' not in session:
+        return redirect('/login')
+    conn, db_type = get_db()
+    c = get_cursor(conn, db_type)
+    try:
+        if db_type == 'postgres':
+            c.execute("SELECT id, name, email, picture, role, created_at FROM users WHERE id = %s", (user_id,))
+        else:
+            c.execute("SELECT id, name, email, picture, role, created_at FROM users WHERE id = ?", (user_id,))
+        row = c.fetchone()
+        if not row:
+            conn.close()
+            return "User not found", 404
+        if hasattr(row, 'keys'):
+            name = row['name'] or 'User'
+            email = row['email'] or ''
+            picture = row['picture'] or ''
+            role = normalize_role(row['role'] or 'user')
+            created_at = row['created_at'] or ''
+            uid = row['id']
+        else:
+            uid = row[0]
+            name = row[1] or 'User'
+            email = row[2] or ''
+            picture = row[3] or ''
+            role = normalize_role(row[4] if len(row) > 4 else 'user')
+            created_at = row[5] if len(row) > 5 else ''
+        viewer_role = normalize_role(session.get('admin_role') or session.get('role') or 'user')
+        show_email = role_priority(viewer_role) >= role_priority('host')
+        can_dm = session.get('user_id') != uid
+        conn.close()
+        return render_template('public_profile.html', user={
+            "id": uid,
+            "name": name,
+            "email": email,
+            "picture": picture,
+            "role": role,
+            "role_display": role.replace('_', ' ').upper(),
+            "created_at": created_at
+        }, show_email=show_email, can_dm=can_dm)
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return str(e), 500
+
 @app.route('/api/db_check')
 def db_check():
     if 'user_id' not in session:
@@ -3331,7 +3396,7 @@ def db_check():
         tables = _list_tables(conn, db_type)
         required = [
             'users', 'verses', 'likes', 'saves', 'comments', 'comment_replies',
-            'community_messages', 'direct_messages', 'audit_logs', 'daily_actions', 'notifications'
+            'community_messages', 'direct_messages', 'dm_typing', 'audit_logs', 'daily_actions', 'notifications'
         ]
         missing_tables = [t for t in required if t not in tables]
         table_info = {}
@@ -4188,6 +4253,109 @@ def dm_send():
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/dm/thread/<int:other_id>/delete', methods=['POST'])
+def dm_delete_thread(other_id):
+    if 'user_id' not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    is_banned, _, _ = check_ban_status(session['user_id'])
+    if is_banned:
+        return jsonify({"error": "banned"}), 403
+    if other_id == session['user_id']:
+        return jsonify({"error": "Invalid target"}), 400
+    conn, db_type = get_db()
+    c = get_cursor(conn, db_type)
+    try:
+        ensure_dm_tables(c, db_type)
+        conn.commit()
+        uid = session['user_id']
+        if db_type == 'postgres':
+            c.execute("""
+                DELETE FROM direct_messages
+                WHERE (sender_id = %s AND recipient_id = %s)
+                   OR (sender_id = %s AND recipient_id = %s)
+            """, (uid, other_id, other_id, uid))
+            c.execute("DELETE FROM dm_typing WHERE (user_id = %s AND other_id = %s) OR (user_id = %s AND other_id = %s)", (uid, other_id, other_id, uid))
+        else:
+            c.execute("""
+                DELETE FROM direct_messages
+                WHERE (sender_id = ? AND recipient_id = ?)
+                   OR (sender_id = ? AND recipient_id = ?)
+            """, (uid, other_id, other_id, uid))
+            c.execute("DELETE FROM dm_typing WHERE (user_id = ? AND other_id = ?) OR (user_id = ? AND other_id = ?)", (uid, other_id, other_id, uid))
+        conn.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/dm/typing', methods=['POST'])
+def dm_typing():
+    if 'user_id' not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    data = request.get_json() or {}
+    other_id = int(data.get('other_id') or 0)
+    if not other_id or other_id == session['user_id']:
+        return jsonify({"error": "Invalid target"}), 400
+    conn, db_type = get_db()
+    c = get_cursor(conn, db_type)
+    try:
+        ensure_dm_tables(c, db_type)
+        conn.commit()
+        now = datetime.now().isoformat()
+        uid = session['user_id']
+        if db_type == 'postgres':
+            c.execute("""
+                INSERT INTO dm_typing (user_id, other_id, updated_at)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (user_id, other_id) DO UPDATE SET updated_at = EXCLUDED.updated_at
+            """, (uid, other_id, now))
+        else:
+            c.execute("""
+                INSERT OR REPLACE INTO dm_typing (user_id, other_id, updated_at)
+                VALUES (?, ?, ?)
+            """, (uid, other_id, now))
+        conn.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/dm/typing/<int:other_id>')
+def dm_typing_status(other_id):
+    if 'user_id' not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    if other_id == session['user_id']:
+        return jsonify({"typing": False})
+    conn, db_type = get_db()
+    c = get_cursor(conn, db_type)
+    try:
+        ensure_dm_tables(c, db_type)
+        conn.commit()
+        uid = session['user_id']
+        if db_type == 'postgres':
+            c.execute("SELECT updated_at FROM dm_typing WHERE user_id = %s AND other_id = %s", (other_id, uid))
+        else:
+            c.execute("SELECT updated_at FROM dm_typing WHERE user_id = ? AND other_id = ?", (other_id, uid))
+        row = c.fetchone()
+        if not row:
+            return jsonify({"typing": False})
+        try:
+            ts = row['updated_at']
+        except Exception:
+            ts = row[0]
+        try:
+            ts_dt = datetime.fromisoformat(str(ts).replace('Z', ''))
+        except Exception:
+            return jsonify({"typing": False})
+        delta = (datetime.now() - ts_dt).total_seconds()
+        return jsonify({"typing": delta <= 6})
+    except Exception:
+        return jsonify({"typing": False})
     finally:
         conn.close()
 

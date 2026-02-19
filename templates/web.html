@@ -1760,6 +1760,17 @@
             color: var(--text-secondary);
         }
 
+        .dm-unread {
+            margin-left: auto;
+            background: rgba(255,71,87,0.2);
+            color: #ff6b7a;
+            border: 1px solid rgba(255,71,87,0.45);
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 999px;
+        }
+
         .dm-messages {
             background: var(--glass-bg);
             border: 1px solid var(--glass-border);
@@ -1785,11 +1796,37 @@
             background: rgba(79,70,229,0.35);
         }
 
+        .dm-time {
+            font-size: 10px;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            margin-top: 4px;
+            color: var(--text-secondary);
+        }
+
+        .dm-message:hover .dm-time {
+            opacity: 0.75;
+        }
+
         .dm-input-area {
             display: flex;
             gap: 8px;
             align-items: center;
             margin-top: 10px;
+        }
+
+        .dm-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .dm-typing {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 6px;
+            min-height: 16px;
         }
 
         .dm-input {
@@ -1821,6 +1858,9 @@
         @media (max-width: 900px) {
             .dm-layout {
                 grid-template-columns: 1fr;
+            }
+            .dm-time {
+                opacity: 0.75;
             }
         }
 
@@ -2008,6 +2048,15 @@
             border-radius: 50%;
             object-fit: cover;
             border: 2px solid var(--glass-border);
+        }
+
+        .comment-user-link {
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .comment-user-link:hover {
+            color: var(--primary);
         }
 
         .comment-meta {
@@ -3863,6 +3912,9 @@
                     <img id="profileAvatar" src="{{ user.picture }}" style="width: 90px; height: 90px; border-radius: 50%; margin-bottom: 16px; border: 3px solid var(--primary); box-shadow: 0 8px 24px var(--primary-glow);">
                     <div id="profileUserName" style="font-size: 24px; font-weight: 700; margin-bottom: 4px;">{{ user.name }}</div>
                     <div id="profileEmail" style="font-size: 14px; opacity: 0.6;">{{ user.email }}</div>
+                    <div style="margin-top: 10px;">
+                        <button class="btn btn-primary" onclick="switchTab('comments'); switchCommentsView('dm');">Open DMs</button>
+                    </div>
                     <div id="roleTag" style="display: none; margin-top: 8px; font-weight: 700; font-size: 14px; text-transform: uppercase;"></div>
                 </div>
 
@@ -4490,8 +4542,11 @@
         let aboutTouchStartX = null;
         let aboutTouchMoved = false;
         let dmSelectedUserId = null;
+        let dmSelectedUserName = '';
         let dmThreadsSignature = '';
         let dmMessagesSignature = '';
+        let dmTypingCooldown = null;
+        const dmThreadsCache = {};
         let aboutIsSliding = false;
         let aboutSyncTimer = null;
         let aboutVideoErrorCount = 0;
@@ -4572,6 +4627,7 @@
             pollNotifications();
             if (notificationPollInterval) clearInterval(notificationPollInterval);
             notificationPollInterval = setInterval(pollNotifications, 30000);
+            handleDeepLinkParams();
             document.addEventListener('visibilitychange', () => {
                 if (document.hidden) stopVersePolling();
                 else startVersePolling();
@@ -5830,6 +5886,7 @@
                 list.innerHTML = '<div class="empty-state"><div class="empty-state-text">No conversations yet.</div></div>';
                 return;
             }
+            threads.forEach(t => { dmThreadsCache[t.user_id] = t; });
             list.innerHTML = threads.map(t => {
                 const active = dmSelectedUserId === t.user_id ? 'active' : '';
                 const unread = t.unread ? ` • ${t.unread} new` : '';
@@ -5838,8 +5895,9 @@
                         <img class="dm-thread-avatar" src="${t.picture || ''}" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(t.name || 'User')}&background=random'">
                         <div>
                             <div class="dm-thread-name">${escapeHtml(t.name || 'User')}</div>
-                            <div class="dm-thread-last">${escapeHtml(t.last_message || 'No messages yet')}${unread}</div>
+                            <div class="dm-thread-last">${escapeHtml(t.last_message || 'No messages yet')}</div>
                         </div>
+                        ${t.unread ? `<span class="dm-unread">${t.unread}</span>` : ''}
                     </div>
                 `;
             }).join('');
@@ -5857,7 +5915,7 @@
                 return `
                     <div class="dm-message ${self ? 'self' : ''}">
                         ${escapeHtml(m.message || '')}
-                        <div style="font-size:10px;opacity:0.6;margin-top:4px;">${formatLocalTimestamp(m.created_at)}</div>
+                        <div class="dm-time">${formatLocalTimestamp(m.created_at)}</div>
                     </div>
                 `;
             }).join('');
@@ -5888,12 +5946,19 @@
                 if (!force && signature === dmMessagesSignature) return;
                 dmMessagesSignature = signature;
                 renderDmMessages(data);
+                updateDmTyping();
             } catch (_) {}
         }
 
         function openDmThread(userId) {
             dmSelectedUserId = userId;
             dmMessagesSignature = '';
+            const label = document.getElementById('dmHeaderLabel');
+            if (label) {
+                const thread = dmThreadsCache[userId];
+                const name = thread && thread.name ? thread.name : `#${userId}`;
+                label.textContent = `Conversation with ${name}`;
+            }
             const results = document.getElementById('dmSearchResults');
             if (results) {
                 results.style.display = 'none';
@@ -5926,6 +5991,55 @@
             loadDmThreads(true);
         }
 
+        async function deleteDmThread() {
+            if (!dmSelectedUserId) {
+                showToast('Pick a conversation first');
+                return;
+            }
+            if (!confirm('Delete this conversation?')) return;
+            const res = await fetch(`/api/dm/thread/${dmSelectedUserId}/delete`, { method: 'POST' });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || data.error) {
+                showToast(data.error || 'Delete failed');
+                return;
+            }
+            dmSelectedUserId = null;
+            dmMessagesSignature = '';
+            const label = document.getElementById('dmHeaderLabel');
+            if (label) label.textContent = 'No conversation selected';
+            const box = document.getElementById('dmMessages');
+            if (box) box.innerHTML = '<div class="empty-state"><div class="empty-state-text">Select a conversation to start chatting.</div></div>';
+            loadDmThreads(true);
+        }
+
+        function scheduleTypingPing() {
+            if (!dmSelectedUserId) return;
+            if (dmTypingCooldown) return;
+            dmTypingCooldown = setTimeout(async () => {
+                dmTypingCooldown = null;
+                try {
+                    await fetch('/api/dm/typing', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ other_id: dmSelectedUserId })
+                    });
+                } catch (_) {}
+            }, 600);
+        }
+
+        async function updateDmTyping() {
+            if (!dmSelectedUserId) return;
+            const indicator = document.getElementById('dmTypingIndicator');
+            if (!indicator) return;
+            try {
+                const res = await fetch(`/api/dm/typing/${dmSelectedUserId}`);
+                const data = await res.json().catch(() => ({}));
+                indicator.textContent = data.typing ? 'Typing…' : '';
+            } catch (_) {
+                indicator.textContent = '';
+            }
+        }
+
         async function searchDmUsers() {
             const input = document.getElementById('dmSearchInput');
             const q = (input.value || '').trim();
@@ -5956,6 +6070,12 @@
                     </div>
                 </div>
             `).join('');
+        }
+
+        function openDmFromComment(userId) {
+            if (!userId) return;
+            switchCommentsView('dm');
+            openDmThread(userId);
         }
 
         function formatLocalTimestamp(ts, options) {
@@ -6033,15 +6153,26 @@
             const replyKey = `${type}-${c.id}`;
             const replyOpen = openReplyKey === replyKey;
             const replyDraft = replyDrafts[replyKey] || '';
+            const canDm = c.user_id && !isOwner;
             
             return `
                 <div class="comment-item" id="${type}-${c.id}">
                     <button class="delete-comment-btn" onclick="deleteComment(${c.id}, '${type}')" title="Delete (Admin only)">&#10005;</button>
                     <div class="comment-header">
-                        <img src="${c.user_picture}" class="comment-avatar" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(c.user_name)}&background=random'">
+                        ${c.user_id ? `
+                            <a class="comment-user-link" href="/u/${c.user_id}">
+                                <img src="${c.user_picture}" class="comment-avatar" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(c.user_name)}&background=random'">
+                            </a>
+                        ` : `
+                            <img src="${c.user_picture}" class="comment-avatar" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(c.user_name)}&background=random'">
+                        `}
                         <div class="comment-meta">
                             <div class="comment-name-row">
-                                <div class="comment-name">${c.user_name}</div>
+                                ${c.user_id ? `
+                                    <a class="comment-user-link comment-name" href="/u/${c.user_id}">${c.user_name}</a>
+                                ` : `
+                                    <div class="comment-name">${c.user_name}</div>
+                                `}
                                 <span class="comment-role-badge comment-role-${role}">${escapeHtml(roleDisplay)}</span>
                             </div>
                             <div class="comment-time">${formatLocalTimestamp(c.timestamp)}</div>
@@ -6064,11 +6195,16 @@
                         <div class="dm-layout">
                             <div class="dm-thread-list" id="dmThreadList"></div>
                             <div>
+                                <div class="dm-actions">
+                                    <div style="font-size:12px;color:var(--text-secondary);" id="dmHeaderLabel">No conversation selected</div>
+                                    <button class="btn btn-secondary" onclick="deleteDmThread()">Delete Thread</button>
+                                </div>
                                 <div class="dm-messages" id="dmMessages">
                                     <div class="empty-state"><div class="empty-state-text">Select a conversation to start chatting.</div></div>
                                 </div>
+                                <div class="dm-typing" id="dmTypingIndicator"></div>
                                 <div class="dm-input-area">
-                                    <input type="text" id="dmInput" class="dm-input" placeholder="Type a message..." onkeydown="if(event.key==='Enter')sendDm()">
+                                    <input type="text" id="dmInput" class="dm-input" placeholder="Type a message..." onkeydown="if(event.key==='Enter')sendDm()" oninput="scheduleTypingPing()">
                                     <button class="send-btn" onclick="sendDm()">Send</button>
                                 </div>
                             </div>
@@ -6080,6 +6216,7 @@
                         <button class="reaction-btn" onclick="addReaction(${c.id}, '${type}', 'pray', this)">🙏 ${reactions['pray'] || 0}</button>
                         <button class="reaction-btn" onclick="addReaction(${c.id}, '${type}', 'cross', this)">✝️ ${reactions['cross'] || 0}</button>
                         <button class="reply-btn" ${replyDisabled} onclick="showReplyBox(${c.id}, '${type}')">Reply (${c.reply_count || replies.length || 0})</button>
+                        ${canDm ? `<button class="reply-btn" onclick="openDmFromComment(${c.user_id})">DM</button>` : ''}
                     </div>
                     <div class="comment-replies" id="replies-${type}-${c.id}">${renderReplies(replies)}</div>
                     <div class="reply-input-area" id="reply-box-${type}-${c.id}" style="display: ${replyOpen ? 'flex' : 'none'};">
@@ -6098,10 +6235,20 @@
                 return `
                     <div class="comment-item" style="margin-left: 26px; margin-top: 8px; border-left: 2px solid rgba(255,255,255,0.12);">
                         <div class="comment-header">
-                            <img src="${r.user_picture || ''}" class="comment-avatar" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(r.user_name || 'User')}&background=random'">
+                            ${r.user_id ? `
+                                <a class="comment-user-link" href="/u/${r.user_id}">
+                                    <img src="${r.user_picture || ''}" class="comment-avatar" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(r.user_name || 'User')}&background=random'">
+                                </a>
+                            ` : `
+                                <img src="${r.user_picture || ''}" class="comment-avatar" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(r.user_name || 'User')}&background=random'">
+                            `}
                             <div class="comment-meta">
                                 <div class="comment-name-row">
-                                    <div class="comment-name">${escapeHtml(r.user_name || 'Anonymous')}</div>
+                                    ${r.user_id ? `
+                                        <a class="comment-user-link comment-name" href="/u/${r.user_id}">${escapeHtml(r.user_name || 'Anonymous')}</a>
+                                    ` : `
+                                        <div class="comment-name">${escapeHtml(r.user_name || 'Anonymous')}</div>
+                                    `}
                                     <span class="comment-role-badge comment-role-${role}">${escapeHtml(roleDisplay)}</span>
                                 </div>
                                 <div class="comment-time">${r.timestamp ? formatLocalTimestamp(r.timestamp) : ''}</div>
@@ -7220,6 +7367,22 @@ function loadAchievements(stats) {
                 e.preventDefault();
                 postCommunityMessage();
             }
+        }
+
+        function handleDeepLinkParams() {
+            try {
+                const params = new URLSearchParams(window.location.search);
+                const dmUser = parseInt(params.get('dmUser') || '0', 10);
+                if (dmUser) {
+                    switchTab('comments');
+                    switchCommentsView('dm');
+                    openDmThread(dmUser);
+                    params.delete('dmUser');
+                    const next = params.toString();
+                    const newUrl = window.location.pathname + (next ? `?${next}` : '') + window.location.hash;
+                    window.history.replaceState({}, '', newUrl);
+                }
+            } catch (_) {}
         }
 
         function isCommentsInputActive() {

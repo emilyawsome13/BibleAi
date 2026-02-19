@@ -85,13 +85,13 @@ DATABASE_URL = (
 if DATABASE_URL and DATABASE_URL.startswith('postgres://'):
     DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
 
-DB_MODE = str(os.environ.get('DB_MODE', 'auto')).strip().lower()
+RENDER_ENV = bool(os.environ.get('RENDER') or os.environ.get('RENDER_SERVICE_ID'))
+DB_MODE = str(os.environ.get('DB_MODE') or ('auto' if RENDER_ENV else 'sqlite')).strip().lower()
 FORCE_SQLITE = DB_MODE in ('sqlite', 'local', 'file')
 FORCE_POSTGRES = DB_MODE in ('postgres', 'postgresql', 'pg')
 IS_POSTGRES = (not FORCE_SQLITE) and DATABASE_URL and ('postgresql' in DATABASE_URL or 'postgres' in DATABASE_URL)
 POSTGRES_AVAILABLE = True
 STRICT_DB = str(os.environ.get('STRICT_DB', '1')).strip().lower() in ('1', 'true', 'yes', 'on')
-RENDER_ENV = bool(os.environ.get('RENDER') or os.environ.get('RENDER_SERVICE_ID'))
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SQLITE_PATH = os.path.join(BASE_DIR, 'bible_ios.db')
 BOOK_TEXT_CACHE = {}

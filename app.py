@@ -62,6 +62,18 @@ ROLE_CODES = {
     'owner': os.environ.get('OWNER_CODE', 'OWNER999')
 }
 
+def normalize_role(role):
+    value = str(role or 'user').strip().lower()
+    if value in ('co-owner', 'co owner', 'coowner'):
+        return 'co_owner'
+    if value in ('owner', 'host', 'mod'):
+        return value
+    return value or 'user'
+
+def role_priority(role):
+    order = {'user': 0, 'host': 1, 'mod': 2, 'co_owner': 3, 'owner': 4}
+    return order.get(normalize_role(role), 0)
+
 ADMIN_CODE = os.environ.get('ADMIN_CODE', 'God Is All')
 MASTER_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'God Is All')
 
@@ -851,7 +863,7 @@ def get_replies_for_parent(c, db_type, parent_type, parent_id):
             "timestamp": timestamp,
             "user_name": db_name or google_name or "Anonymous",
             "user_picture": db_picture or google_picture or "",
-            "user_role": db_role or "user"
+            "user_role": normalize_role(db_role or "user")
         })
     return replies
 
@@ -2236,7 +2248,8 @@ def set_interval():
     if 'user_id' not in session:
         return jsonify({"error": "Not logged in"}), 401
     
-    if not session.get('is_admin'):
+    admin_role = (session.get('admin_role') or session.get('role') or 'user').lower()
+    if not session.get('is_admin') and admin_role not in ('owner', 'co_owner', 'mod', 'host'):
         return jsonify({"error": "Admin required"}), 403
     
     data = request.get_json()
@@ -2370,6 +2383,21 @@ def get_user_info():
                         conn.commit()
                     except Exception:
                         conn.rollback()
+
+            # Sync role from session if it is higher than the stored role
+            try:
+                session_role = normalize_role(session.get('admin_role') or session.get('role') or 'user')
+                db_role = normalize_role(role_val)
+                if role_priority(session_role) > role_priority(db_role):
+                    is_admin_val = True
+                    role_val = session_role
+                    if db_type == 'postgres':
+                        c.execute("UPDATE users SET role = %s, is_admin = %s WHERE id = %s", (role_val, 1, user_id))
+                    else:
+                        c.execute("UPDATE users SET role = ?, is_admin = ? WHERE id = ?", (role_val, 1, user_id))
+                    conn.commit()
+            except Exception:
+                conn.rollback()
 
             return jsonify({
                 "created_at": created_at_val,
@@ -3384,11 +3412,11 @@ def get_comments(verse_id):
                         try:
                             user_name = user_row['name'] or google_name or "Anonymous"
                             user_picture = user_row['picture'] or ""
-                            user_role = user_row['role'] or "user"
+                            user_role = normalize_role(user_row['role'] or "user")
                         except (TypeError, KeyError):
                             user_name = user_row[0] or google_name or "Anonymous"
                             user_picture = user_row[1] or ""
-                            user_role = user_row[2] if len(user_row) > 2 and user_row[2] else "user"
+                            user_role = normalize_role(user_row[2] if len(user_row) > 2 and user_row[2] else "user")
                 except Exception as user_err:
                     logger.error(f"Error getting user info: {user_err}")
             

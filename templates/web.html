@@ -4337,6 +4337,8 @@
         let favoritesCollection = null;
         let currentCommentsView = 'verse';
         let openReplyKey = null;
+        let replyActiveKey = null;
+        const replyDrafts = {};
         let aboutSlideIndex = 0;
         let aboutTouchStartX = null;
         let aboutTouchMoved = false;
@@ -4880,6 +4882,21 @@
             }
         }
 
+        function syncIntervalSetting(intervalValue) {
+            const nextInterval = parseInt(intervalValue || 0, 10);
+            if (!Number.isFinite(nextInterval) || nextInterval <= 0) return;
+            if (settings.interval === nextInterval) return;
+            settings.interval = nextInterval;
+            saveSettings();
+            const select = document.getElementById('intervalSelect');
+            if (select && String(select.value) !== String(nextInterval)) {
+                select.value = String(nextInterval);
+            }
+            if (isAdmin && settings.notifications) {
+                showToast(`Interval synced: ${nextInterval}s`);
+            }
+        }
+
         function updateCountdownUi() {
             if (!countdownSyncedAt) return;
             const elapsed = Math.floor((Date.now() - countdownSyncedAt) / 1000);
@@ -4920,6 +4937,7 @@
                     document.getElementById('commentVerseRef').textContent = data.verse.ref;
                     
                     syncCountdown(data.countdown, data.interval);
+                    syncIntervalSetting(data.interval);
                     
                     if (isNew) {
                         animateVerseReveal();
@@ -5485,6 +5503,7 @@
         // Comments
         async function loadComments() {
             if (!currentVerse) return;
+            captureActiveReplyDraft();
             const res = await fetch(`/api/comments/${currentVerse.id}`, { cache: 'no-store' });
             const data = await res.json().catch(() => ([]));
             if (!res.ok || data.error) {
@@ -5503,8 +5522,7 @@
                 list.innerHTML = comments.map(c => renderCommentItem(c, 'comment')).join('');
             }
             if (openReplyKey) {
-                const input = document.querySelector(`#reply-box-${openReplyKey} .comment-input`);
-                if (input) input.focus();
+                restoreActiveReplyDraft();
             }
             
             // Show delete buttons if admin
@@ -5545,6 +5563,7 @@
 
         // Community Chat
         async function loadCommunityMessages() {
+            captureActiveReplyDraft();
             const res = await fetch('/api/community', { cache: 'no-store' });
             const data = await res.json().catch(() => ([]));
             if (!res.ok || data.error) {
@@ -5566,8 +5585,7 @@
                 list.innerHTML = filtered.map(m => renderCommentItem(m, 'community')).join('');
             }
             if (openReplyKey) {
-                const input = document.querySelector(`#reply-box-${openReplyKey} .comment-input`);
-                if (input) input.focus();
+                restoreActiveReplyDraft();
             }
             
             if (isAdmin) {
@@ -5614,6 +5632,39 @@
             return date.toLocaleString([], options || {});
         }
 
+        function trackReplyDraft(key, value) {
+            if (!key) return;
+            replyDrafts[key] = value || '';
+            replyActiveKey = key;
+        }
+
+        function setReplyEditing(key, isEditing) {
+            if (!key) return;
+            if (isEditing) {
+                replyActiveKey = key;
+                return;
+            }
+            if (replyActiveKey === key) replyActiveKey = null;
+        }
+
+        function captureActiveReplyDraft() {
+            const active = document.activeElement;
+            if (!active || !active.id || !active.id.startsWith('reply-input-')) return;
+            const key = active.id.replace('reply-input-', '');
+            replyDrafts[key] = active.value || '';
+            replyActiveKey = key;
+        }
+
+        function restoreActiveReplyDraft() {
+            if (!replyActiveKey) return;
+            const input = document.getElementById(`reply-input-${replyActiveKey}`);
+            if (!input) return;
+            input.value = replyDrafts[replyActiveKey] || '';
+            input.focus();
+            const len = input.value.length;
+            try { input.setSelectionRange(len, len); } catch (_) {}
+        }
+
         function renderCommentItem(c, type) {
             const isOwner = c.user_id === parseInt('{{ user.id }}');
             const reactions = c.reactions || { 'heart': 0, 'pray': 0, 'cross': 0 };
@@ -5623,6 +5674,7 @@
             const replyDisabled = commentRestriction.restricted ? 'disabled' : '';
             const replyKey = `${type}-${c.id}`;
             const replyOpen = openReplyKey === replyKey;
+            const replyDraft = replyDrafts[replyKey] || '';
             
             return `
                 <div class="comment-item" id="${type}-${c.id}">
@@ -5646,7 +5698,7 @@
                     </div>
                     <div class="comment-replies" id="replies-${type}-${c.id}">${renderReplies(replies)}</div>
                     <div class="reply-input-area" id="reply-box-${type}-${c.id}" style="display: ${replyOpen ? 'flex' : 'none'};">
-                        <input type="text" class="comment-input" name="reply_text" autocomplete="off" data-form-type="other" placeholder="Write a reply..." id="reply-input-${type}-${c.id}" ${replyDisabled} onkeydown="if(event.key==='Enter')postReply(${c.id}, '${type}')">
+                        <input type="text" class="comment-input" name="reply_text" autocomplete="off" data-form-type="other" placeholder="Write a reply..." id="reply-input-${type}-${c.id}" value="${escapeHtml(replyDraft)}" ${replyDisabled} oninput="trackReplyDraft('${replyKey}', this.value)" onfocus="setReplyEditing('${replyKey}', true)" onblur="setReplyEditing('${replyKey}', false)" onkeydown="if(event.key==='Enter')postReply(${c.id}, '${type}')">
                         <button class="send-btn" ${replyDisabled} onclick="postReply(${c.id}, '${type}')">Send</button>
                     </div>
                 </div>
@@ -6896,13 +6948,17 @@ function loadAchievements(stats) {
             const key = `${type}-${commentId}`;
             const isOpen = openReplyKey === key;
             openReplyKey = isOpen ? null : key;
+            replyActiveKey = openReplyKey;
             document.querySelectorAll('.reply-input-area').forEach(el => {
                 el.style.display = 'none';
             });
             if (!isOpen) {
                 box.style.display = 'flex';
                 const input = document.getElementById(`reply-input-${type}-${commentId}`) || document.getElementById(`reply-input-${commentId}`);
-                if (input) input.focus();
+                if (input) {
+                    if (replyDrafts[key]) input.value = replyDrafts[key];
+                    input.focus();
+                }
             }
         }
 
@@ -6996,6 +7052,7 @@ function loadAchievements(stats) {
         function switchCommentsView(view) {
             currentCommentsView = view === 'community' ? 'community' : 'verse';
             openReplyKey = null;
+            replyActiveKey = null;
             const verseSection = document.getElementById('verseCommentsSection');
             const communitySection = document.getElementById('communityCommentsSection');
             const verseBtn = document.getElementById('commentsViewVerseBtn');

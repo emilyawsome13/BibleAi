@@ -2545,14 +2545,16 @@ def get_user_info():
                 earliest = find_earliest_activity()
                 if earliest:
                     created_at_val = earliest.isoformat()
-                    try:
-                        if db_type == 'postgres':
-                            c.execute("UPDATE users SET created_at = %s WHERE id = %s", (created_at_val, user_id))
-                        else:
-                            c.execute("UPDATE users SET created_at = ? WHERE id = ?", (created_at_val, user_id))
-                        conn.commit()
-                    except Exception:
-                        conn.rollback()
+                else:
+                    created_at_val = datetime.now().isoformat()
+                try:
+                    if db_type == 'postgres':
+                        c.execute("UPDATE users SET created_at = %s WHERE id = %s", (created_at_val, user_id))
+                    else:
+                        c.execute("UPDATE users SET created_at = ? WHERE id = ?", (created_at_val, user_id))
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
 
             # Sync role from session if it is higher than the stored role
             try:
@@ -2858,7 +2860,7 @@ def get_daily_challenge():
         conn.commit()
         progress = min(progress, goal)
         xp_reward = get_hourly_xp_reward(session['user_id'], period_key)
-        now_ts = datetime.now()
+        now_ts = datetime.now().astimezone()
         hidden = bool(hide_at and now_ts >= hide_at)
         return jsonify({
             "id": challenge.get('id', 'save2'),

@@ -4266,6 +4266,8 @@
         let commentRestriction = { restricted: false, reason: '', expires_at: null };
         let notificationsCache = [];
         let themeAuto = false;
+        let lastCommentsSignature = '';
+        let lastCommunitySignature = '';
         let wakeLockHandle = null;
         
         // Text to Speech
@@ -5515,6 +5517,11 @@
                 return;
             }
             const comments = data;
+            const signature = buildCommentSignature(comments);
+            if (!force && signature && signature === lastCommentsSignature) {
+                return;
+            }
+            lastCommentsSignature = signature;
             
             const list = document.getElementById('commentsList');
             if (comments.length === 0) {
@@ -5579,6 +5586,11 @@
             const filtered = currentCommunityFilter === 'all'
                 ? messages
                 : messages.filter(m => String(m.text || '').toLowerCase().includes('#' + currentCommunityFilter.toLowerCase()));
+            const signature = buildCommentSignature(filtered);
+            if (!force && signature && signature === lastCommunitySignature) {
+                return;
+            }
+            lastCommunitySignature = signature;
             
             const list = document.getElementById('communityList');
             if (filtered.length === 0) {
@@ -5632,6 +5644,27 @@
             const date = new Date(normalized);
             if (Number.isNaN(date.getTime())) return raw;
             return date.toLocaleString([], options || {});
+        }
+
+        function buildReactionsSignature(reactions) {
+            if (!reactions || typeof reactions !== 'object') return '';
+            const keys = Object.keys(reactions).sort();
+            return keys.map(k => `${k}:${reactions[k] || 0}`).join(',');
+        }
+
+        function buildCommentSignature(items) {
+            if (!Array.isArray(items)) return '';
+            return items.map(c => {
+                const replies = Array.isArray(c.replies) ? c.replies : [];
+                const replyIds = replies.map(r => r.id).join(',');
+                return [
+                    c.id,
+                    (c.text || '').length,
+                    c.reply_count || replies.length || 0,
+                    buildReactionsSignature(c.reactions),
+                    replyIds
+                ].join('|');
+            }).join('||');
         }
 
         function trackReplyDraft(key, value) {

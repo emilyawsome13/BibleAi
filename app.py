@@ -2535,11 +2535,17 @@ def get_stats():
         try:
             if db_type == 'postgres':
                 c.execute("ALTER TABLE comments ADD COLUMN IF NOT EXISTS is_deleted INTEGER DEFAULT 0")
+                c.execute("ALTER TABLE comment_replies ADD COLUMN IF NOT EXISTS is_deleted INTEGER DEFAULT 0")
             else:
                 c.execute("SELECT is_deleted FROM comments LIMIT 1")
+                try:
+                    c.execute("SELECT is_deleted FROM comment_replies LIMIT 1")
+                except Exception:
+                    c.execute("ALTER TABLE comment_replies ADD COLUMN is_deleted INTEGER DEFAULT 0")
         except:
             try:
                 c.execute("ALTER TABLE comments ADD COLUMN is_deleted INTEGER DEFAULT 0")
+                c.execute("ALTER TABLE comment_replies ADD COLUMN is_deleted INTEGER DEFAULT 0")
             except:
                 pass
         conn.commit()
@@ -2565,14 +2571,40 @@ def get_stats():
             comments = safe_count("SELECT COUNT(*) FROM comments WHERE user_id = %s AND COALESCE(is_deleted, 0) = 0", (session['user_id'],))
             # Also count community messages
             community = safe_count("SELECT COUNT(*) FROM community_messages WHERE user_id = %s", (session['user_id'],))
-            replies = safe_count("SELECT COUNT(*) FROM comment_replies WHERE user_id = %s AND COALESCE(is_deleted, 0) = 0", (session['user_id'],))
+            replies = safe_count("""
+                SELECT COUNT(*)
+                FROM comment_replies r
+                LEFT JOIN comments c
+                    ON r.parent_type = 'comment' AND r.parent_id = c.id
+                LEFT JOIN community_messages m
+                    ON r.parent_type = 'community' AND r.parent_id = m.id
+                WHERE r.user_id = %s
+                  AND COALESCE(r.is_deleted, 0) = 0
+                  AND (
+                      (r.parent_type = 'comment' AND COALESCE(c.is_deleted, 0) = 0)
+                      OR (r.parent_type = 'community' AND m.id IS NOT NULL)
+                  )
+            """, (session['user_id'],))
         else:
             total = safe_count("SELECT COUNT(*) FROM verses")
             liked = safe_count("SELECT COUNT(*) FROM likes WHERE user_id = ?", (session['user_id'],))
             saved = safe_count("SELECT COUNT(*) FROM saves WHERE user_id = ?", (session['user_id'],))
             comments = safe_count("SELECT COUNT(*) FROM comments WHERE user_id = ? AND COALESCE(is_deleted, 0) = 0", (session['user_id'],))
             community = safe_count("SELECT COUNT(*) FROM community_messages WHERE user_id = ?", (session['user_id'],))
-            replies = safe_count("SELECT COUNT(*) FROM comment_replies WHERE user_id = ? AND COALESCE(is_deleted, 0) = 0", (session['user_id'],))
+            replies = safe_count("""
+                SELECT COUNT(*)
+                FROM comment_replies r
+                LEFT JOIN comments c
+                    ON r.parent_type = 'comment' AND r.parent_id = c.id
+                LEFT JOIN community_messages m
+                    ON r.parent_type = 'community' AND r.parent_id = m.id
+                WHERE r.user_id = ?
+                  AND COALESCE(r.is_deleted, 0) = 0
+                  AND (
+                      (r.parent_type = 'comment' AND COALESCE(c.is_deleted, 0) = 0)
+                      OR (r.parent_type = 'community' AND m.id IS NOT NULL)
+                  )
+            """, (session['user_id'],))
         
         logger.info(f"Stats for user {session['user_id']}: verses={total}, liked={liked}, saved={saved}, comments={comments}, community={community}, replies={replies}")
         

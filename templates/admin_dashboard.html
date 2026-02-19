@@ -280,19 +280,32 @@
         
         .btn {
             padding: 8px 14px;
-            border: none;
+            border: 1px solid var(--border);
             border-radius: 8px;
             cursor: pointer;
             font-size: 0.8rem;
             font-weight: 500;
             margin-right: 4px;
             margin-bottom: 4px;
+            background: rgba(255,255,255,0.06);
+            color: var(--text);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.3);
         }
         
-        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary {
+            background: rgba(255,255,255,0.08);
+            color: #f4f6ff;
+            border: 1px solid rgba(255,255,255,0.18);
+            box-shadow: 0 10px 24px rgba(0,0,0,0.35);
+        }
         .btn-danger { background: var(--danger); color: white; }
         .btn-success { background: var(--success); color: white; }
-        .btn-warning { background: var(--warning); color: white; }
+        .btn-warning { background: var(--warning); color: #101113; }
+        .btn-secondary {
+            background: rgba(255,255,255,0.06);
+            color: #e8ebf7;
+            border: 1px solid rgba(255,255,255,0.12);
+        }
         .btn:disabled { opacity: 0.5; cursor: not-allowed; }
         
         .hidden { display: none !important; }
@@ -533,30 +546,41 @@
         
         /* Activity Feed */
         .activity-list {
-            max-height: 300px;
+            max-height: 320px;
             overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
         }
         
         .activity-item {
             display: flex;
             gap: 12px;
-            padding: 12px;
-            border-bottom: 1px solid var(--border);
+            padding: 12px 14px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--surface);
+            box-shadow: 0 10px 28px rgba(0,0,0,0.35);
         }
         
         .activity-icon {
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
+            width: 38px;
+            height: 38px;
+            border-radius: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.1rem;
+            font-size: 1rem;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.12);
         }
         
-        .activity-icon.ban { background: rgba(245,101,101,0.2); }
-        .activity-icon.unban { background: rgba(72,187,120,0.2); }
-        .activity-icon.restrict { background: rgba(237,137,54,0.2); }
+        .activity-icon.ban,
+        .activity-icon.delete_comment { background: rgba(245,101,101,0.2); }
+        .activity-icon.unban,
+        .activity-icon.unrestrict { background: rgba(72,187,120,0.2); }
+        .activity-icon.restrict,
+        .activity-icon.restrict_comments { background: rgba(237,137,54,0.2); }
         
         .activity-content {
             flex: 1;
@@ -565,19 +589,20 @@
         
         .activity-text {
             font-size: 0.95rem;
-            margin-bottom: 4px;
+            margin-bottom: 6px;
+            color: #f5f7ff;
         }
         
         .activity-details {
-            font-size: 0.85rem;
+            font-size: 0.82rem;
             color: var(--text-secondary);
-            margin-bottom: 4px;
+            margin-bottom: 3px;
             word-break: break-word;
         }
         
         .activity-time {
-            font-size: 0.75rem;
-            color: #666;
+            font-size: 0.72rem;
+            color: var(--text-secondary);
         }
         
         /* User Cell with Avatar */
@@ -1411,8 +1436,9 @@
                 currentRole = data.role;
                 
                 const badge = document.getElementById('roleBadge');
-                badge.textContent = data.role ?? '-';
-                badge.className = 'role-badge role-' + data.role;
+                const normalizedRole = normalizeRole(data.role);
+                badge.textContent = roleLabel(data.role);
+                badge.className = 'role-badge role-' + normalizedRole;
             } catch (err) {
                 console.error('Stats error:', err);
             }
@@ -1724,6 +1750,22 @@
             }
         }
 
+        function normalizeRole(role) {
+            const r = String(role || 'user').trim().toLowerCase();
+            if (!r) return 'user';
+            if (r === 'co-owner' || r === 'co owner' || r === 'coowner') return 'co_owner';
+            if (r === 'owner') return 'owner';
+            if (r === 'host') return 'host';
+            if (r === 'mod' || r === 'moderator') return 'mod';
+            return r;
+        }
+
+        function roleLabel(role) {
+            const r = normalizeRole(role);
+            if (r === 'co_owner') return 'CO-OWNER';
+            return r.toUpperCase();
+        }
+
         async function loadUsers() {
             const container = document.getElementById('usersContent');
             try {
@@ -1760,6 +1802,8 @@
             
             let html = '<table><thead><tr><th>User</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
             users.forEach(u => {
+                const normalizedRole = normalizeRole(u.role);
+                const roleText = roleLabel(u.role);
                 let statusHtml = '<span class="status-badge status-active">Active</span>';
                 if (u.is_banned) statusHtml = '<span class="status-badge status-banned">Banned</span>';
                 
@@ -1780,7 +1824,7 @@
                 
                 html += `<tr>
                     <td>${escapeHtml(u.name)}<br><small style="color:#888">${escapeHtml(u.email)}</small></td>
-                    <td><span class="user-badge badge-${u.role}">${u.role}</span></td>
+                    <td><span class="user-badge badge-${normalizedRole}">${roleText}</span></td>
                     <td>${statusHtml}</td>
                     <td>${actions}</td>
                 </tr>`;
@@ -2622,14 +2666,15 @@
                 }
                 
                 const icons = {
-                    'BAN': '[B]', 'UNBAN': '[U]', 'RESTRICT_COMMENTS': '[R]', 'UNRESTRICT': '[U]',
-                    'DELETE_COMMENT': '[D]', 'UPDATE_ROLE': '[ROLE]', 'ADMIN_LOGIN': '[LOGIN]',
-                    'UPDATE_SETTINGS': '[CFG]', 'USER_LOGIN': '[LOGIN]', 'USER_COMMENT': '[C]', 'USER_COMMUNITY': '[C]'
+                    'BAN': '⛔', 'UNBAN': '✅', 'RESTRICT_COMMENTS': '🚫', 'UNRESTRICT': '✅',
+                    'DELETE_COMMENT': '🗑️', 'UPDATE_ROLE': '👑', 'ADMIN_LOGIN': '🔐',
+                    'UPDATE_SETTINGS': '⚙️', 'USER_LOGIN': '👤', 'USER_COMMENT': '💬', 'USER_COMMUNITY': '💬'
                 };
                 
                 let html = '';
                 data.forEach(log => {
                     const icon = icons[log.action] || '[LOG]';
+                    const actionClass = String(log.action || '').toLowerCase();
                     const time = formatLocalTime(log.timestamp);
                     const adminName = escapeHtml(log.admin_name || log.admin_id || 'system');
                     const actionName = escapeHtml((log.action || 'UNKNOWN').replace(/_/g, ' '));
@@ -2644,10 +2689,11 @@
                     const extrasLine = (log.extras && Object.keys(log.extras).length)
                         ? `<div class="activity-details">Extras: ${escapeHtml(JSON.stringify(log.extras))}</div>`
                         : '';
+                    const detailsLine = log.details ? `<div class="activity-details">${escapeHtml(log.details || '')}</div>` : '';
 
                     html += `
                         <div class="activity-item">
-                            <div class="activity-icon">${icon}</div>
+                            <div class="activity-icon ${actionClass}">${icon}</div>
                             <div class="activity-content">
                                 <div class="activity-text">
                                     <strong>${actionName}</strong> by ${adminName}
@@ -2658,7 +2704,7 @@
                                 ${reasonLine}
                                 ${durationLine}
                                 ${extrasLine}
-                                <div class="activity-details">${escapeHtml(log.details || '')}</div>
+                                ${detailsLine}
                                 <div class="activity-time">${time}</div>
                             </div>
                         </div>

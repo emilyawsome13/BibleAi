@@ -958,8 +958,19 @@ def get_users():
             token = f"%{search.lower()}%"
             params.extend([token, token] if db_type != 'postgres' else [f"%{search}%", f"%{search}%"])
 
+        def normalize_role_value(value):
+            r = (value or '').strip().lower()
+            if r in ('co-owner', 'co owner', 'coowner'):
+                return 'co_owner'
+            if r in ('owner', 'host', 'mod'):
+                return r
+            return r or 'user'
+
         if role:
-            where.append("role = %s" if db_type == 'postgres' else "role = ?")
+            if db_type == 'postgres':
+                where.append("LOWER(COALESCE(role, 'user')) = LOWER(%s)")
+            else:
+                where.append("LOWER(COALESCE(role, 'user')) = LOWER(?)")
             params.append(role)
 
         if status == 'banned':
@@ -974,11 +985,12 @@ def get_users():
         
         users = []
         for row in rows:
+            role_val = normalize_role_value(row[3] or "user")
             users.append({
                 "id": row[0],
                 "name": row[1] or "Unknown",
                 "email": row[2] or "No email",
-                "role": row[3] or "user",
+                "role": role_val,
                 "is_admin": bool(row[4]),
                 "is_banned": bool(row[5]),
                 "created_at": row[6] or "Unknown"

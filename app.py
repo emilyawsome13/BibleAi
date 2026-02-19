@@ -703,12 +703,17 @@ migrate_db()
 
 def get_challenge_period_key():
     now = datetime.now()
-    return now.strftime("%Y-%m-%d-%H")
+    start = now.replace(minute=0, second=0, microsecond=0)
+    block_hour = (start.hour // 2) * 2
+    start = start.replace(hour=block_hour)
+    return start.strftime("%Y-%m-%d-%H")
 
 def get_hour_window():
     now = datetime.now()
     start = now.replace(minute=0, second=0, microsecond=0)
-    return start, start + timedelta(hours=1)
+    block_hour = (start.hour // 2) * 2
+    start = start.replace(hour=block_hour)
+    return start, start + timedelta(hours=2)
 
 def get_hourly_xp_reward(user_id, period_key):
     seed = f"{user_id}:{period_key}"
@@ -729,7 +734,7 @@ def pick_hourly_challenge(user_id, period_key):
     return challenges[value % len(challenges)]
 
 def record_daily_action(user_id, action, verse_id=None):
-    """Persist unique per-hour user actions used by Hourly Challenge."""
+    """Persist unique per-window user actions used by the challenge."""
     conn, db_type = get_db()
     c = get_cursor(conn, db_type)
     period_key = get_challenge_period_key()
@@ -3368,6 +3373,13 @@ def public_profile(user_id):
         viewer_role = normalize_role(session.get('admin_role') or session.get('role') or 'user')
         show_email = role_priority(viewer_role) >= role_priority('host')
         can_dm = session.get('user_id') != uid
+        created_display = ''
+        if created_at:
+            try:
+                dt = datetime.fromisoformat(str(created_at).replace('Z', ''))
+                created_display = dt.strftime('%b %d, %Y')
+            except Exception:
+                created_display = str(created_at)
         conn.close()
         return render_template('public_profile.html', user={
             "id": uid,
@@ -3376,7 +3388,8 @@ def public_profile(user_id):
             "picture": picture,
             "role": role,
             "role_display": role.replace('_', ' ').upper(),
-            "created_at": created_at
+            "created_at": created_at,
+            "created_at_display": created_display
         }, show_email=show_email, can_dm=can_dm)
     except Exception as e:
         try:
@@ -4037,6 +4050,62 @@ def search_users():
                     "name": row[1] or "User",
                     "picture": row[3] or "",
                     "role": normalize_role(row[4] if len(row) > 4 else 'user')
+                })
+        return jsonify(results)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/users/recent')
+def recent_users():
+    if 'user_id' not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    conn, db_type = get_db()
+    c = get_cursor(conn, db_type)
+    try:
+        limit = max(1, min(12, int(request.args.get('limit', 8))))
+        uid = session['user_id']
+        if db_type == 'postgres':
+            c.execute(f"""
+                SELECT u.id, u.name, u.picture, u.role
+                FROM users u
+                WHERE u.id <> %s AND u.id IN (
+                    SELECT user_id FROM comments ORDER BY timestamp DESC LIMIT {limit * 5}
+                    UNION
+                    SELECT user_id FROM community_messages ORDER BY timestamp DESC LIMIT {limit * 5}
+                )
+                ORDER BY u.id DESC
+                LIMIT {limit}
+            """, (uid,))
+        else:
+            c.execute(f"""
+                SELECT u.id, u.name, u.picture, u.role
+                FROM users u
+                WHERE u.id <> ? AND u.id IN (
+                    SELECT user_id FROM comments ORDER BY timestamp DESC LIMIT {limit * 5}
+                    UNION
+                    SELECT user_id FROM community_messages ORDER BY timestamp DESC LIMIT {limit * 5}
+                )
+                ORDER BY u.id DESC
+                LIMIT {limit}
+            """, (uid,))
+        rows = c.fetchall()
+        results = []
+        for row in rows:
+            try:
+                results.append({
+                    "id": row['id'],
+                    "name": row['name'] or "User",
+                    "picture": row['picture'] or "",
+                    "role": normalize_role(row['role'] or 'user')
+                })
+            except Exception:
+                results.append({
+                    "id": row[0],
+                    "name": row[1] or "User",
+                    "picture": row[2] or "",
+                    "role": normalize_role(row[3] if len(row) > 3 else 'user')
                 })
         return jsonify(results)
     except Exception as e:

@@ -88,8 +88,8 @@
         {% else %}
             <div class="meta">Email hidden for privacy</div>
         {% endif %}
-        {% if user.created_at %}
-            <div class="meta">Member since {{ user.created_at }}</div>
+        {% if user.created_at_display %}
+            <div class="meta">Member since {{ user.created_at_display }}</div>
         {% endif %}
         <div class="actions">
             {% if can_dm %}

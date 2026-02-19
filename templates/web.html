@@ -919,7 +919,6 @@
         body.tab-comments .ambient-bg { filter: hue-rotate(78deg) saturate(1.1); }
         body.tab-profile .ambient-bg { filter: hue-rotate(110deg) saturate(1.1); }
         body.tab-about .ambient-bg { filter: hue-rotate(145deg) saturate(1.16); }
-        body.tab-donation .ambient-bg { filter: hue-rotate(168deg) saturate(1.2); }
         .ambient-bg { transition: filter 280ms ease; }
 
         @keyframes tabEnter {
@@ -1271,10 +1270,6 @@
             #comments,
             #about,
             #profile,
-            #donation {
-                grid-column: 1 / -1;
-                grid-row: auto;
-            }
         }
 
         @keyframes fadeIn {
@@ -3555,10 +3550,6 @@
                     <span class="nav-icon">&#127909;</span>
                     <span>About Us</span>
                 </button>
-                <button class="nav-item" onclick="switchTab('donation')" data-tab="donation">
-                    <span class="nav-icon">&#128176;</span>
-                    <span>Donation</span>
-                </button>
             </nav>
 
             <!-- Lovewell Church Credit -->
@@ -3570,6 +3561,11 @@
                          id="lovewellLogo">
                 </a>
                 <div class="lovewell-credit-text">Credit To Cross Community Lovewell for more info check out the About us Or Click the logo thanks for your support!</div>
+                <a href="https://buy.stripe.com/7sY00j7sh4Do6Plaap4ko0b" target="_blank" rel="noopener noreferrer"
+                   style="display:inline-flex; align-items:center; justify-content:center; gap:8px; background: linear-gradient(135deg, #16a34a, #22c55e); color:white; text-decoration:none; padding:10px 16px; border-radius:12px; font-weight:700; margin-top:10px;">
+                    <span>&#128176;</span>
+                    <span>Donate Securely</span>
+                </a>
             </div>
 
             <div class="header-actions">
@@ -4081,25 +4077,6 @@
                                 <div class="about-info-text">Official page: <a class="about-link-inline" href="https://www.crossforall.com/about" target="_blank" rel="noopener noreferrer">crossforall.com/about</a></div>
                             </div>
                         </div>
-                    </div>
-                </div>
-            </div>
-            <!-- DONATION TAB -->
-            <div id="donation" class="tab-view">
-                <div class="glass-card" style="padding: 24px; margin-bottom: 16px;">
-                    <div style="font-size: 22px; font-weight: 800; margin-bottom: 8px;">Support The Mission</div>
-                    <div style="font-size: 14px; color: var(--text-secondary); margin-bottom: 16px;">
-                        Help keep Bible AI growing with better features, faster servers, and more community tools.
-                    </div>
-                    <a href="https://buy.stripe.com/7sY00j7sh4Do6Plaap4ko0b" target="_blank" rel="noopener noreferrer"
-                       style="display:inline-flex; align-items:center; justify-content:center; gap:8px; background: linear-gradient(135deg, #16a34a, #22c55e); color:white; text-decoration:none; padding:12px 18px; border-radius:12px; font-weight:700;">
-                        <span>&#128176;</span>
-                        <span>Donate Securely</span>
-                    </a>
-                </div>
-                <div class="glass-card" style="padding: 18px;">
-                    <div style="font-size: 14px; color: var(--text-secondary);">
-                        Every donation helps maintain uptime, moderation tools, and new features for the community.
                     </div>
                 </div>
             </div>
@@ -5884,6 +5861,11 @@
             if (!list) return;
             if (!threads.length) {
                 list.innerHTML = '<div class="empty-state"><div class="empty-state-text">No conversations yet.</div></div>';
+                const suggested = document.getElementById('dmSuggestedList');
+                if (suggested) {
+                    suggested.innerHTML = '<div class="empty-state"><div class="empty-state-text">Suggestions loading…</div></div>';
+                }
+                loadDmSuggestions();
                 return;
             }
             threads.forEach(t => { dmThreadsCache[t.user_id] = t; });
@@ -5901,6 +5883,30 @@
                     </div>
                 `;
             }).join('');
+        }
+
+        async function loadDmSuggestions() {
+            const suggested = document.getElementById('dmSuggestedList');
+            if (!suggested) return;
+            try {
+                const res = await fetch('/api/users/recent?limit=6', { cache: 'no-store' });
+                const data = await res.json().catch(() => ([]));
+                if (!res.ok || data.error || !data.length) {
+                    suggested.innerHTML = '';
+                    return;
+                }
+                suggested.innerHTML = data.map(u => `
+                    <div class="dm-thread" onclick="openDmThread(${u.id})">
+                        <img class="dm-thread-avatar" src="${u.picture || ''}" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(u.name || 'User')}&background=random'">
+                        <div>
+                            <div class="dm-thread-name">${escapeHtml(u.name || 'User')}</div>
+                            <div class="dm-thread-last">Suggested • ${escapeHtml(u.role || 'user')}</div>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (_) {
+                suggested.innerHTML = '';
+            }
         }
 
         function renderDmMessages(messages) {
@@ -6193,7 +6199,8 @@
                         <div class="dm-search-results" id="dmSearchResults" style="display:none;"></div>
 
                         <div class="dm-layout">
-                            <div class="dm-thread-list" id="dmThreadList"></div>
+                        <div class="dm-thread-list" id="dmThreadList"></div>
+                        <div class="dm-thread-list" id="dmSuggestedList" style="margin-top:8px;"></div>
                             <div>
                                 <div class="dm-actions">
                                     <div style="font-size:12px;color:var(--text-secondary);" id="dmHeaderLabel">No conversation selected</div>
@@ -6457,24 +6464,34 @@ const ACHIEVEMENTS = [
     { id: 'liker_50', icon: '💖', name: 'Appreciator', desc: 'Like 50 verses', goal: 50, progress: (d) => d.liked, check: (d) => d.liked >= 50 },
     { id: 'liker_200', icon: '💞', name: 'Enthusiast', desc: 'Like 200 verses', goal: 200, progress: (d) => d.liked, check: (d) => d.liked >= 200 },
     { id: 'liker_500', icon: '💘', name: 'Devoted', desc: 'Like 500 verses', goal: 500, progress: (d) => d.liked, check: (d) => d.liked >= 500 },
+    { id: 'liker_1000', icon: '💎', name: 'Beloved', desc: 'Like 1000 verses', goal: 1000, progress: (d) => d.liked, check: (d) => d.liked >= 1000 },
 
     // Save Achievements
     { id: 'collector', icon: '🔖', name: 'Collector', desc: 'Save 10 verses', goal: 10, progress: (d) => d.saved, check: (d) => d.saved >= 10 },
     { id: 'librarian', icon: '📚', name: 'Librarian', desc: 'Save 50 verses', goal: 50, progress: (d) => d.saved, check: (d) => d.saved >= 50 },
     { id: 'archivist', icon: '🗄️', name: 'Archivist', desc: 'Save 150 verses', goal: 150, progress: (d) => d.saved, check: (d) => d.saved >= 150 },
     { id: 'curator', icon: '🏛️', name: 'Curator', desc: 'Save 300 verses', goal: 300, progress: (d) => d.saved, check: (d) => d.saved >= 300 },
+    { id: 'vault_keeper', icon: '🔐', name: 'Vault Keeper', desc: 'Save 500 verses', goal: 500, progress: (d) => d.saved, check: (d) => d.saved >= 500 },
 
     // Comment Achievements
     { id: 'first_comment', icon: '💬', name: 'Voice', desc: 'Post a comment', goal: 1, progress: (d) => d.comments, check: (d) => d.comments >= 1 },
     { id: 'conversationalist', icon: '🗣️', name: 'Chatty', desc: 'Post 25 comments', goal: 25, progress: (d) => d.comments, check: (d) => d.comments >= 25 },
     { id: 'storyteller', icon: '📜', name: 'Storyteller', desc: 'Post 75 comments', goal: 75, progress: (d) => d.comments, check: (d) => d.comments >= 75 },
     { id: 'oracle', icon: '🔮', name: 'Oracle', desc: 'Post 150 comments', goal: 150, progress: (d) => d.comments, check: (d) => d.comments >= 150 },
+    { id: 'scribe', icon: '✍️', name: 'Scribe', desc: 'Post 300 comments', goal: 300, progress: (d) => d.comments, check: (d) => d.comments >= 300 },
+
+    // Reply Achievements
+    { id: 'first_reply', icon: '💡', name: 'Responder', desc: 'Post your first reply', goal: 1, progress: (d) => d.replies, check: (d) => d.replies >= 1 },
+    { id: 'helper', icon: '🤝', name: 'Helper', desc: 'Post 10 replies', goal: 10, progress: (d) => d.replies, check: (d) => d.replies >= 10 },
+    { id: 'encourager', icon: '🌟', name: 'Encourager', desc: 'Post 50 replies', goal: 50, progress: (d) => d.replies, check: (d) => d.replies >= 50 },
+    { id: 'counselor', icon: '🕊️', name: 'Counselor', desc: 'Post 150 replies', goal: 150, progress: (d) => d.replies, check: (d) => d.replies >= 150 },
 
     // View/Explorer Achievements
     { id: 'explorer', icon: '🧭', name: 'Explorer', desc: 'View 100 verses', goal: 100, progress: (d) => d.total_verses, check: (d) => d.total_verses >= 100 },
     { id: 'scholar', icon: '🎓', name: 'Scholar', desc: 'View 500 verses', goal: 500, progress: (d) => d.total_verses, check: (d) => d.total_verses >= 500 },
     { id: 'sage', icon: '🧠', name: 'Sage', desc: 'View 1000 verses', goal: 1000, progress: (d) => d.total_verses, check: (d) => d.total_verses >= 1000 },
     { id: 'master', icon: '👑', name: 'Master', desc: 'View 2500 verses', goal: 2500, progress: (d) => d.total_verses, check: (d) => d.total_verses >= 2500 },
+    { id: 'pilgrim', icon: '🥾', name: 'Pilgrim', desc: 'View 5000 verses', goal: 5000, progress: (d) => d.total_verses, check: (d) => d.total_verses >= 5000 },
 
     // Streak Achievements
     { id: 'three_day_streak', icon: '🔥', name: 'On Fire', desc: '3 day streak', goal: 3, progress: () => getStreakCount(), check: () => getStreakCount() >= 3 },
@@ -7838,7 +7855,7 @@ function loadAchievements(stats) {
         }
 
         function updateTabThemeClass(tab) {
-            const classes = ['tab-discover', 'tab-recommendations', 'tab-library', 'tab-comments', 'tab-profile', 'tab-about', 'tab-donation'];
+            const classes = ['tab-discover', 'tab-recommendations', 'tab-library', 'tab-comments', 'tab-profile', 'tab-about'];
             classes.forEach(c => document.body.classList.remove(c));
             document.body.classList.add(`tab-${tab}`);
         }

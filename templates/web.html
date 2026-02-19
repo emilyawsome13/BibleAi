@@ -207,16 +207,14 @@
             text-shadow: 0 0 12px rgba(255,255,255,0.12);
             animation: particleFloat 22s infinite linear;
         }
-        .particle.cross {
-            width: auto;
-            height: auto;
-            background: none;
+        .particle.cross-image {
+            width: 44px;
+            height: 44px;
+            background: url('/static/images/cross-particle.png') center/contain no-repeat;
             border-radius: 0;
-            color: rgba(255,255,255,0.4);
-            font-size: 16px;
-            font-weight: 700;
-            text-shadow: 0 0 18px rgba(255,255,255,0.18);
-            animation: particleFloat 24s infinite linear;
+            opacity: 0.4;
+            filter: drop-shadow(0 0 16px rgba(255,255,255,0.25));
+            animation: particleFloat 26s infinite linear;
             mix-blend-mode: screen;
         }
         @keyframes particleFloat {
@@ -7804,17 +7802,17 @@ function loadAchievements(stats) {
                 container.appendChild(p);
             }
 
-            const crosses = ['✝', '✟', '✞', '✚', '✠'];
-            for (let i = 0; i < 20; i++) {
+            for (let i = 0; i < 18; i++) {
                 const s = document.createElement('div');
-                s.className = 'particle cross';
-                s.textContent = crosses[Math.floor(Math.random() * crosses.length)];
+                s.className = 'particle cross-image';
                 s.style.left = Math.random() * 100 + '%';
-                s.style.animationDuration = (16 + Math.random() * 20) + 's';
+                s.style.animationDuration = (18 + Math.random() * 22) + 's';
                 s.style.animationDelay = Math.random() * 18 + 's';
-                s.style.opacity = 0.22 + Math.random() * 0.35;
-                s.style.fontSize = (12 + Math.random() * 12) + 'px';
-                s.style.transform = `translateY(100vh) rotate(${Math.random() * 60 - 30}deg)`;
+                s.style.opacity = 0.3 + Math.random() * 0.35;
+                const size = 34 + Math.random() * 28;
+                s.style.width = `${size}px`;
+                s.style.height = `${size}px`;
+                s.style.transform = `translateY(100vh) rotate(${Math.random() * 40 - 20}deg)`;
                 container.appendChild(s);
             }
         }

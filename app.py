@@ -87,6 +87,8 @@ if DATABASE_URL and DATABASE_URL.startswith('postgres://'):
 
 IS_POSTGRES = DATABASE_URL and ('postgresql' in DATABASE_URL or 'postgres' in DATABASE_URL)
 POSTGRES_AVAILABLE = True
+STRICT_DB = str(os.environ.get('STRICT_DB', '1')).strip().lower() in ('1', 'true', 'yes', 'on')
+RENDER_ENV = bool(os.environ.get('RENDER') or os.environ.get('RENDER_SERVICE_ID'))
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SQLITE_PATH = os.path.join(BASE_DIR, 'bible_ios.db')
 BOOK_TEXT_CACHE = {}
@@ -182,12 +184,17 @@ def get_db():
             conn = psycopg2.connect(DATABASE_URL, sslmode='require')
             return conn, 'postgres'
         except ImportError:
+            if STRICT_DB or RENDER_ENV:
+                logger.error("psycopg2 not installed and strict DB mode enabled")
+                raise
             logger.warning("psycopg2 not installed, falling back to SQLite")
             conn = sqlite3.connect(SQLITE_PATH, timeout=20)
             conn.row_factory = sqlite3.Row
             return conn, 'sqlite'
         except Exception as e:
             logger.error(f"PostgreSQL connection failed: {e}")
+            if STRICT_DB or RENDER_ENV:
+                raise
             POSTGRES_AVAILABLE = False
             # Fallback to SQLite if Postgres fails
             conn = sqlite3.connect(SQLITE_PATH, timeout=20)

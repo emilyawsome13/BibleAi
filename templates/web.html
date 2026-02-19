@@ -208,14 +208,20 @@
             animation: particleFloat 22s infinite linear;
         }
         .particle.cross-image {
-            width: 44px;
-            height: 44px;
+            width: 80px;
+            height: 80px;
             background: url('/static/images/cross-particle.png') center/contain no-repeat;
             border-radius: 0;
-            opacity: 0.4;
-            filter: drop-shadow(0 0 16px rgba(255,255,255,0.25));
-            animation: particleFloat 26s infinite linear;
+            opacity: 0.8;
+            filter: drop-shadow(0 0 28px rgba(255,255,255,0.7)) brightness(1.4) saturate(1.2);
+            animation: particleFloatBright 28s infinite linear;
             mix-blend-mode: screen;
+        }
+        @keyframes particleFloatBright {
+            0% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
+            8% { opacity: 0.9; }
+            92% { opacity: 0.9; }
+            100% { transform: translateY(-100vh) rotate(720deg); opacity: 0; }
         }
         @keyframes particleFloat {
             0% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
@@ -2094,6 +2100,20 @@
         }
         .avatar-decor.hidden {
             display: none;
+        }
+        @keyframes decor-spin {
+            from { transform: translate(-50%, -50%) rotate(0deg); }
+            to { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+        @keyframes decor-pulse {
+            0%, 100% { transform: translate(-50%, -50%) scale(1); }
+            50% { transform: translate(-50%, -50%) scale(1.06); }
+        }
+        .avatar-decor.spin {
+            animation: decor-spin 8s linear infinite;
+        }
+        .avatar-decor.pulse {
+            animation: decor-pulse 2.6s ease-in-out infinite;
         }
         #headerAvatarWrap {
             width: 36px;
@@ -6517,7 +6537,8 @@
             const safeName = name || 'User';
             const fallback = `https://ui-avatars.com/api/?name=${encodeURIComponent(safeName)}&background=random`;
             const avatarUrl = url || '';
-            const decorImg = decor ? `<img class="avatar-decor" src="${decor}" alt="">` : '';
+            const decorAnim = (typeof DECOR_ANIMATIONS === 'object' && DECOR_ANIMATIONS[decor]) ? ` ${DECOR_ANIMATIONS[decor]}` : '';
+            const decorImg = decor ? `<img class="avatar-decor${decorAnim}" src="${decor}" alt="">` : '';
             return `
                 <span class="avatar-wrap">
                     <img src="${avatarUrl}" class="${imgClass}" onerror="this.src='${fallback}'">
@@ -6650,8 +6671,22 @@
             { name: 'Ice', url: '/static/images/decorations/ice.svg' },
             { name: 'Rose', url: '/static/images/decorations/rose.svg' },
             { name: 'Shield', url: '/static/images/decorations/shield.svg' },
-            { name: 'Orbit', url: '/static/images/decorations/orbit.svg' }
+            { name: 'Orbit', url: '/static/images/decorations/orbit.svg' },
+            { name: 'Royal Frame', url: 'https://openclipart.org/image/800px/354763' },
+            { name: 'Golden Laurel', url: 'https://openclipart.org/image/800px/227363' },
+            { name: 'Laurel Classic', url: 'https://openclipart.org/image/800px/282511' },
+            { name: 'Floral Wreath', url: 'https://openclipart.org/image/800px/253120' },
+            { name: 'Winged Frame', url: 'https://openclipart.org/image/800px/352754' },
+            { name: 'Winged Heart', url: 'https://openclipart.org/image/800px/228243' },
+            { name: 'Doodle Wings', url: 'https://openclipart.org/image/800px/292258' }
         ];
+
+        const DECOR_ANIMATIONS = {
+            '/static/images/decorations/orbit.svg': 'spin',
+            '/static/images/decorations/electric.svg': 'pulse',
+            'https://openclipart.org/image/800px/354763': 'spin',
+            'https://openclipart.org/image/800px/253120': 'pulse'
+        };
 
         function updateHeaderAvatar(url) {
             const headerImg = document.getElementById('headerAvatarImg');
@@ -6665,12 +6700,16 @@
             const onlineDecor = document.getElementById('onlineAvatarDecor');
             [headerDecor, profileDecor, onlineDecor].forEach(el => {
                 if (!el) return;
+                el.classList.remove('spin', 'pulse');
                 if (!currentAvatarDecoration) {
                     el.classList.add('hidden');
                     el.removeAttribute('src');
                 } else {
                     el.src = currentAvatarDecoration;
                     el.classList.remove('hidden');
+                    if (DECOR_ANIMATIONS[currentAvatarDecoration]) {
+                        el.classList.add(DECOR_ANIMATIONS[currentAvatarDecoration]);
+                    }
                 }
             });
         }
@@ -8890,8 +8929,8 @@ function loadAchievements(stats) {
                 s.style.left = Math.random() * 100 + '%';
                 s.style.animationDuration = (18 + Math.random() * 22) + 's';
                 s.style.animationDelay = Math.random() * 18 + 's';
-                s.style.opacity = 0.3 + Math.random() * 0.35;
-                const size = 34 + Math.random() * 28;
+                s.style.opacity = 0.65 + Math.random() * 0.3;
+                const size = 70 + Math.random() * 60;
                 s.style.width = `${size}px`;
                 s.style.height = `${size}px`;
                 s.style.transform = `translateY(100vh) rotate(${Math.random() * 40 - 20}deg)`;

@@ -92,6 +92,8 @@ FORCE_POSTGRES = DB_MODE in ('postgres', 'postgresql', 'pg')
 IS_POSTGRES = (not FORCE_SQLITE) and DATABASE_URL and ('postgresql' in DATABASE_URL or 'postgres' in DATABASE_URL)
 POSTGRES_AVAILABLE = True
 STRICT_DB = str(os.environ.get('STRICT_DB', '1')).strip().lower() in ('1', 'true', 'yes', 'on')
+if FORCE_SQLITE:
+    DATABASE_URL = 'sqlite:///bible_ios.db'
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SQLITE_PATH = os.path.join(BASE_DIR, 'bible_ios.db')
 BOOK_TEXT_CACHE = {}
@@ -232,6 +234,22 @@ def _redact_db_url(url):
         return f"{parsed.scheme}://{host}{port}{path}"
     except Exception:
         return ''
+
+def _list_tables(conn, db_type):
+    c = conn.cursor()
+    if db_type == 'postgres':
+        c.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
+        return [r[0] for r in c.fetchall()]
+    c.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    return [r[0] for r in c.fetchall()]
+
+def _table_columns(conn, db_type, table):
+    c = conn.cursor()
+    if db_type == 'postgres':
+        c.execute("SELECT column_name FROM information_schema.columns WHERE table_name = %s", (table,))
+        return [r[0] for r in c.fetchall()]
+    c.execute(f"PRAGMA table_info({table})")
+    return [r[1] for r in c.fetchall()]
 
 def read_system_setting(key, default=None):
     conn = None
@@ -3273,6 +3291,46 @@ def db_status_page():
     if not session.get('is_admin'):
         return redirect('/')
     return render_template('db_status.html')
+
+@app.route('/api/db_check')
+def db_check():
+    if 'user_id' not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    if not session.get('is_admin'):
+        return jsonify({"error": "Admin required"}), 403
+    try:
+        conn, db_type = get_db()
+        tables = _list_tables(conn, db_type)
+        required = [
+            'users', 'verses', 'likes', 'saves', 'comments', 'comment_replies',
+            'community_messages', 'audit_logs', 'daily_actions', 'notifications'
+        ]
+        missing_tables = [t for t in required if t not in tables]
+        table_info = {}
+        for t in required:
+            if t not in tables:
+                table_info[t] = {"exists": False, "count": None, "columns": []}
+                continue
+            cols = _table_columns(conn, db_type, t)
+            try:
+                c = conn.cursor()
+                c.execute(f"SELECT COUNT(*) FROM {t}")
+                row = c.fetchone()
+                count = row[0] if row else 0
+            except Exception:
+                count = None
+            table_info[t] = {"exists": True, "count": count, "columns": cols}
+        conn.close()
+        return jsonify({
+            "db_type": db_type,
+            "db_mode": DB_MODE,
+            "sqlite_path": SQLITE_PATH if db_type == 'sqlite' else None,
+            "database_url": _redact_db_url(DATABASE_URL) if db_type == 'postgres' else None,
+            "missing_tables": missing_tables,
+            "tables": table_info
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 def _request_location_snapshot():
     forwarded_for = request.headers.get('X-Forwarded-For', '')

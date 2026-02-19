@@ -105,9 +105,12 @@
             <div class="sub">Shows which database is active and how many rows are in each table.</div>
             <div id="statusMeta" class="meta"></div>
             <div id="statusGrid" class="grid"></div>
+            <div id="checkMeta" class="meta" style="margin-top:18px;"></div>
+            <div id="checkGrid" class="grid"></div>
             <div id="statusError" class="error" style="display:none;"></div>
             <div class="actions">
                 <button class="btn" onclick="loadStatus()">Refresh</button>
+                <button class="btn" onclick="loadCheck()">Deep Check</button>
                 <a class="btn" href="/">Back to Site</a>
             </div>
         </div>
@@ -150,6 +153,38 @@
                 if (!Object.keys(counts).length) {
                     grid.innerHTML = '<div class="stat">No tables found.</div>';
                 }
+            } catch (e) {
+                meta.textContent = '';
+                err.style.display = 'block';
+                err.textContent = e.message || 'Failed to load';
+            }
+        }
+        async function loadCheck() {
+            const meta = document.getElementById('checkMeta');
+            const grid = document.getElementById('checkGrid');
+            const err = document.getElementById('statusError');
+            err.style.display = 'none';
+            meta.textContent = 'Running deep check...';
+            grid.innerHTML = '';
+            try {
+                const res = await fetch('/api/db_check');
+                const data = await res.json();
+                if (!res.ok || data.error) {
+                    throw new Error(data.error || 'Failed to load');
+                }
+                const missing = data.missing_tables || [];
+                meta.innerHTML = missing.length
+                    ? `Missing tables: ${missing.join(', ')}`
+                    : 'All required tables exist.';
+                const tables = data.tables || {};
+                Object.keys(tables).forEach(key => {
+                    const t = tables[key];
+                    const display = (t.count === null || t.count === undefined) ? 'N/A' : t.count;
+                    const stat = document.createElement('div');
+                    stat.className = 'stat';
+                    stat.innerHTML = `<div class="stat-label">${key}</div><div class="stat-value">${display}</div>`;
+                    grid.appendChild(stat);
+                });
             } catch (e) {
                 meta.textContent = '';
                 err.style.display = 'block';

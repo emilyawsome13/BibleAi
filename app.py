@@ -9,6 +9,7 @@ import secrets
 import json
 import random
 import logging
+from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
 import hashlib
 from functools import wraps
@@ -76,6 +77,36 @@ def role_priority(role):
 
 ADMIN_CODE = os.environ.get('ADMIN_CODE', 'God Is All')
 MASTER_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'God Is All')
+
+ALLOWED_IMAGE_EXTS = {'png', 'jpg', 'jpeg', 'webp', 'gif'}
+UPLOAD_ROOT = os.path.join(app.root_path, 'static', 'uploads')
+
+def allowed_image_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_IMAGE_EXTS
+
+def require_min_role(min_role='host'):
+    role = normalize_role(session.get('admin_role') or session.get('role') or 'user')
+    return role_priority(role) >= role_priority(min_role)
+
+def try_remove_background(file_path):
+    try:
+        from PIL import Image
+    except Exception as e:
+        return False, f"Pillow not available: {e}"
+    try:
+        img = Image.open(file_path).convert("RGBA")
+        bg = img.getpixel((0, 0))
+        new_data = []
+        for r, g, b, a in img.getdata():
+            if abs(r - bg[0]) + abs(g - bg[1]) + abs(b - bg[2]) < 45:
+                new_data.append((r, g, b, 0))
+            else:
+                new_data.append((r, g, b, a))
+        img.putdata(new_data)
+        img.save(file_path)
+        return True, None
+    except Exception as e:
+        return False, str(e)
 
 DATABASE_URL = (
     os.environ.get('DATABASE_URL-9864bd776330b2743effe162f4cef50d')
@@ -304,7 +335,8 @@ def init_db():
                 CREATE TABLE IF NOT EXISTS users (
                     id SERIAL PRIMARY KEY, google_id TEXT UNIQUE, email TEXT, 
                     name TEXT, picture TEXT, created_at TEXT, is_admin INTEGER DEFAULT 0,
-                    is_banned BOOLEAN DEFAULT FALSE, ban_expires_at TIMESTAMP, ban_reason TEXT, role TEXT DEFAULT 'user'
+                    is_banned BOOLEAN DEFAULT FALSE, ban_expires_at TIMESTAMP, ban_reason TEXT, role TEXT DEFAULT 'user',
+                    custom_picture TEXT, avatar_decoration TEXT
                 )
             ''')
             
@@ -413,7 +445,8 @@ def init_db():
             c.execute('''CREATE TABLE IF NOT EXISTS users 
                          (id INTEGER PRIMARY KEY AUTOINCREMENT, google_id TEXT UNIQUE, email TEXT, 
                           name TEXT, picture TEXT, created_at TEXT, is_admin INTEGER DEFAULT 0,
-                          is_banned INTEGER DEFAULT 0, ban_expires_at TEXT, ban_reason TEXT, role TEXT DEFAULT 'user')''')
+                          is_banned INTEGER DEFAULT 0, ban_expires_at TEXT, ban_reason TEXT, role TEXT DEFAULT 'user',
+                          custom_picture TEXT, avatar_decoration TEXT)''')
             
             c.execute('''CREATE TABLE IF NOT EXISTS likes 
                          (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, verse_id INTEGER, 
@@ -575,6 +608,12 @@ def migrate_db():
                 c.execute("ALTER TABLE daily_actions ADD COLUMN IF NOT EXISTS timestamp TEXT")
             except Exception:
                 pass
+
+            try:
+                c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS custom_picture TEXT")
+                c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_decoration TEXT")
+            except Exception:
+                pass
                 
         else:
             # SQLite migrations
@@ -688,6 +727,16 @@ def migrate_db():
                     c.execute("ALTER TABLE daily_actions ADD COLUMN timestamp TEXT")
             except Exception as e:
                 logger.warning(f"Could not migrate daily_actions columns: {e}")
+
+            try:
+                c.execute("PRAGMA table_info(users)")
+                ucols = {str(r[1]).lower() for r in c.fetchall()}
+                if 'custom_picture' not in ucols:
+                    c.execute("ALTER TABLE users ADD COLUMN custom_picture TEXT")
+                if 'avatar_decoration' not in ucols:
+                    c.execute("ALTER TABLE users ADD COLUMN avatar_decoration TEXT")
+            except Exception as e:
+                logger.warning(f"Could not migrate user profile columns: {e}")
         
         conn.commit()
         logger.info("Database migrations completed")
@@ -702,14 +751,14 @@ init_db()
 migrate_db()
 
 def get_challenge_period_key():
-    now = datetime.now()
+    now = datetime.now().astimezone()
     start = now.replace(minute=0, second=0, microsecond=0)
     block_hour = (start.hour // 2) * 2
     start = start.replace(hour=block_hour)
     return start.strftime("%Y-%m-%d-%H")
 
 def get_hour_window():
-    now = datetime.now()
+    now = datetime.now().astimezone()
     start = now.replace(minute=0, second=0, microsecond=0)
     block_hour = (start.hour // 2) * 2
     start = start.replace(hour=block_hour)
@@ -905,20 +954,20 @@ def get_reaction_counts(c, db_type, item_type, item_id):
 
 def get_replies_for_parent(c, db_type, parent_type, parent_id):
     if db_type == 'postgres':
-        c.execute("""
+            c.execute("""
             SELECT
                 r.id, r.user_id, r.text, r.timestamp, r.google_name, r.google_picture,
-                u.name AS db_name, u.picture AS db_picture, u.role AS db_role
+                u.name AS db_name, COALESCE(u.custom_picture, u.picture) AS db_picture, u.role AS db_role
             FROM comment_replies r
             LEFT JOIN users u ON r.user_id = u.id
             WHERE r.parent_type = %s AND r.parent_id = %s AND COALESCE(r.is_deleted, 0) = 0
             ORDER BY r.timestamp ASC
         """, (parent_type, parent_id))
-    else:
-        c.execute("""
+        else:
+            c.execute("""
             SELECT
                 r.id, r.user_id, r.text, r.timestamp, r.google_name, r.google_picture,
-                u.name AS db_name, u.picture AS db_picture, u.role AS db_role
+                u.name AS db_name, COALESCE(u.custom_picture, u.picture) AS db_picture, u.role AS db_role
             FROM comment_replies r
             LEFT JOIN users u ON r.user_id = u.id
             WHERE r.parent_type = ? AND r.parent_id = ? AND COALESCE(r.is_deleted, 0) = 0
@@ -1665,9 +1714,9 @@ def index():
     
     try:
         if db_type == 'postgres':
-            c.execute("SELECT * FROM users WHERE id = %s", (session['user_id'],))
+            c.execute("SELECT id, name, email, picture, custom_picture, avatar_decoration, created_at, role FROM users WHERE id = %s", (session['user_id'],))
         else:
-            c.execute("SELECT * FROM users WHERE id = ?", (session['user_id'],))
+            c.execute("SELECT id, name, email, picture, custom_picture, avatar_decoration, created_at, role FROM users WHERE id = ?", (session['user_id'],))
         
         user = c.fetchone()
         
@@ -1700,20 +1749,30 @@ def index():
             return redirect(url_for('login'))
         
         try:
+            custom_picture = user['custom_picture']
+            base_picture = user['picture']
+            effective_picture = custom_picture or base_picture or ''
             user_dict = {
                 "id": user['id'],
                 "name": user['name'],
                 "email": user['email'],
-                "picture": user['picture'],
-                "role": user.get('role', 'user') if isinstance(user, dict) else (user[10] if len(user) > 10 else 'user')
+                "picture": effective_picture,
+                "avatar_decoration": user.get('avatar_decoration') if isinstance(user, dict) else None,
+                "created_at": user.get('created_at') if isinstance(user, dict) else None,
+                "role": user.get('role', 'user') if isinstance(user, dict) else (user[7] if len(user) > 7 else 'user')
             }
         except (TypeError, KeyError):
+            custom_picture = user[4] if len(user) > 4 else None
+            base_picture = user[3] if len(user) > 3 else None
+            effective_picture = custom_picture or base_picture or ''
             user_dict = {
                 "id": user[0],
-                "name": user[3],
-                "email": user[2],
-                "picture": user[4],
-                "role": user[10] if len(user) > 10 else 'user'
+                "name": user[1] if len(user) > 1 else '',
+                "email": user[2] if len(user) > 2 else '',
+                "picture": effective_picture,
+                "avatar_decoration": user[5] if len(user) > 5 else None,
+                "created_at": user[6] if len(user) > 6 else None,
+                "role": user[7] if len(user) > 7 else 'user'
             }
         
         return render_template('web.html', 
@@ -1865,7 +1924,16 @@ def callback():
         
         session['user_id'] = user_id
         session['user_name'] = user['name'] if isinstance(user, dict) else user[3]
-        session['user_picture'] = user['picture'] if isinstance(user, dict) else user[4]
+        session['user_email'] = email
+        try:
+            custom_pic = user.get('custom_picture') if isinstance(user, dict) else (user[11] if len(user) > 11 else None)
+        except Exception:
+            custom_pic = None
+        session['user_picture'] = (custom_pic or (user['picture'] if isinstance(user, dict) else user[4]))
+        try:
+            session['avatar_decoration'] = user.get('avatar_decoration') if isinstance(user, dict) else (user[12] if len(user) > 12 else None)
+        except Exception:
+            session['avatar_decoration'] = None
         session['is_admin'] = bool(user['is_admin']) if isinstance(user, dict) else bool(user[6])
         
         try:
@@ -2445,9 +2513,9 @@ def get_user_info():
     
     try:
         if db_type == 'postgres':
-            c.execute("SELECT created_at, is_admin, is_banned, role, name FROM users WHERE id = %s", (user_id,))
+            c.execute("SELECT created_at, is_admin, is_banned, role, name, email, picture, custom_picture, avatar_decoration FROM users WHERE id = %s", (user_id,))
         else:
-            c.execute("SELECT created_at, is_admin, is_banned, role, name FROM users WHERE id = ?", (user_id,))
+            c.execute("SELECT created_at, is_admin, is_banned, role, name, email, picture, custom_picture, avatar_decoration FROM users WHERE id = ?", (user_id,))
         
         row = c.fetchone()
         
@@ -2458,12 +2526,20 @@ def get_user_info():
                 is_banned_val = bool(row['is_banned'])
                 role_val = row['role'] or 'user'
                 name_val = row['name'] or session.get('user_name')
+                email_val = row.get('email') or session.get('user_email')
+                base_picture = row.get('picture')
+                custom_picture = row.get('custom_picture')
+                avatar_decoration = row.get('avatar_decoration')
             else:
                 created_at_val = row[0]
                 is_admin_val = bool(row[1])
                 is_banned_val = bool(row[2])
                 role_val = row[3] if row[3] else 'user'
                 name_val = row[4] if len(row) > 4 else session.get('user_name')
+                email_val = row[5] if len(row) > 5 else session.get('user_email')
+                base_picture = row[6] if len(row) > 6 else None
+                custom_picture = row[7] if len(row) > 7 else None
+                avatar_decoration = row[8] if len(row) > 8 else None
 
             if not created_at_val:
                 earliest = find_earliest_activity()
@@ -2493,15 +2569,29 @@ def get_user_info():
             except Exception:
                 conn.rollback()
 
+            effective_picture = custom_picture or base_picture or session.get('user_picture') or ''
             return jsonify({
                 "created_at": created_at_val,
                 "is_admin": is_admin_val,
                 "is_banned": is_banned_val,
                 "role": role_val,
                 "name": name_val,
+                "email": email_val,
+                "picture": effective_picture,
+                "custom_picture": custom_picture,
+                "avatar_decoration": avatar_decoration,
                 "session_admin": session.get('is_admin', False)
             })
-        return jsonify({"created_at": None, "is_admin": False, "is_banned": False, "role": "user", "name": session.get('user_name')})
+        return jsonify({
+            "created_at": None,
+            "is_admin": False,
+            "is_banned": False,
+            "role": "user",
+            "name": session.get('user_name'),
+            "email": session.get('user_email'),
+            "picture": session.get('user_picture'),
+            "avatar_decoration": None
+        })
     except Exception as e:
         logger.error(f"User info error: {e}")
         return jsonify({"error": str(e)}), 500
@@ -3299,6 +3389,143 @@ def get_mood_recommendation(mood):
     finally:
         conn.close()
 
+@app.route('/api/user/avatar', methods=['POST'])
+def update_user_avatar():
+    if 'user_id' not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    if not require_min_role('host'):
+        return jsonify({"error": "Host+ required"}), 403
+
+    data = request.get_json() or {}
+    kind = (data.get('kind') or 'picture').strip().lower()
+    url = (data.get('url') or '').strip()
+    reset = bool(data.get('reset'))
+    if kind not in ('picture', 'decoration'):
+        return jsonify({"error": "Invalid kind"}), 400
+
+    conn, db_type = get_db()
+    c = get_cursor(conn, db_type)
+    try:
+        if kind == 'picture':
+            if reset:
+                if db_type == 'postgres':
+                    c.execute("UPDATE users SET custom_picture = NULL WHERE id = %s", (session['user_id'],))
+                else:
+                    c.execute("UPDATE users SET custom_picture = NULL WHERE id = ?", (session['user_id'],))
+                try:
+                    if db_type == 'postgres':
+                        c.execute("SELECT picture FROM users WHERE id = %s", (session['user_id'],))
+                    else:
+                        c.execute("SELECT picture FROM users WHERE id = ?", (session['user_id'],))
+                    base_row = c.fetchone()
+                    base_pic = base_row['picture'] if isinstance(base_row, dict) else (base_row[0] if base_row else '')
+                except Exception:
+                    base_pic = session.get('user_picture') or ''
+                session['user_picture'] = base_pic
+            else:
+                if len(url) < 6:
+                    return jsonify({"error": "Invalid URL"}), 400
+                if db_type == 'postgres':
+                    c.execute("UPDATE users SET custom_picture = %s WHERE id = %s", (url, session['user_id']))
+                else:
+                    c.execute("UPDATE users SET custom_picture = ? WHERE id = ?", (url, session['user_id']))
+                session['user_picture'] = url
+        else:
+            if reset:
+                if db_type == 'postgres':
+                    c.execute("UPDATE users SET avatar_decoration = NULL WHERE id = %s", (session['user_id'],))
+                else:
+                    c.execute("UPDATE users SET avatar_decoration = NULL WHERE id = ?", (session['user_id'],))
+                session['avatar_decoration'] = None
+            else:
+                if len(url) < 6:
+                    return jsonify({"error": "Invalid URL"}), 400
+                if db_type == 'postgres':
+                    c.execute("UPDATE users SET avatar_decoration = %s WHERE id = %s", (url, session['user_id']))
+                else:
+                    c.execute("UPDATE users SET avatar_decoration = ? WHERE id = ?", (url, session['user_id']))
+                session['avatar_decoration'] = url
+
+        conn.commit()
+        return jsonify({
+            "success": True,
+            "picture": session.get('user_picture'),
+            "avatar_decoration": session.get('avatar_decoration')
+        })
+    except Exception as e:
+        logger.error(f"Update avatar error: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/user/avatar-upload', methods=['POST'])
+def upload_user_avatar():
+    if 'user_id' not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    if not require_min_role('host'):
+        return jsonify({"error": "Host+ required"}), 403
+    kind = (request.form.get('kind') or 'picture').strip().lower()
+    remove_bg = str(request.form.get('remove_bg') or '').lower() in ('1', 'true', 'yes', 'on')
+    if kind not in ('picture', 'decoration'):
+        return jsonify({"error": "Invalid kind"}), 400
+    file = request.files.get('file')
+    if not file or not file.filename:
+        return jsonify({"error": "No file provided"}), 400
+    if not allowed_image_file(file.filename):
+        return jsonify({"error": "Unsupported file type"}), 400
+
+    ext = file.filename.rsplit('.', 1)[1].lower()
+    subdir = 'avatars' if kind == 'picture' else 'decorations'
+    os.makedirs(os.path.join(UPLOAD_ROOT, subdir), exist_ok=True)
+    stamp = int(time.time())
+    filename = secure_filename(f"user_{session['user_id']}_{stamp}.{ext}")
+    filepath = os.path.join(UPLOAD_ROOT, subdir, filename)
+    file.save(filepath)
+
+    warning = None
+    if kind == 'picture' and remove_bg:
+        if ext != 'png':
+            png_name = secure_filename(f"user_{session['user_id']}_{stamp}.png")
+            png_path = os.path.join(UPLOAD_ROOT, subdir, png_name)
+            try:
+                os.replace(filepath, png_path)
+                filepath = png_path
+                filename = png_name
+            except Exception:
+                pass
+        ok, err = try_remove_background(filepath)
+        if not ok:
+            warning = err or "Background removal failed"
+
+    url = f"/static/uploads/{subdir}/{filename}"
+    conn, db_type = get_db()
+    c = get_cursor(conn, db_type)
+    try:
+        if kind == 'picture':
+            if db_type == 'postgres':
+                c.execute("UPDATE users SET custom_picture = %s WHERE id = %s", (url, session['user_id']))
+            else:
+                c.execute("UPDATE users SET custom_picture = ? WHERE id = ?", (url, session['user_id']))
+            session['user_picture'] = url
+        else:
+            if db_type == 'postgres':
+                c.execute("UPDATE users SET avatar_decoration = %s WHERE id = %s", (url, session['user_id']))
+            else:
+                c.execute("UPDATE users SET avatar_decoration = ? WHERE id = ?", (url, session['user_id']))
+            session['avatar_decoration'] = url
+        conn.commit()
+    finally:
+        conn.close()
+    payload = {
+        "success": True,
+        "url": url,
+        "picture": session.get('user_picture'),
+        "avatar_decoration": session.get('avatar_decoration')
+    }
+    if warning:
+        payload["warning"] = warning
+    return jsonify(payload)
+
 @app.route('/api/db_status')
 def db_status():
     if 'user_id' not in session:
@@ -3349,9 +3576,9 @@ def public_profile(user_id):
     c = get_cursor(conn, db_type)
     try:
         if db_type == 'postgres':
-            c.execute("SELECT id, name, email, picture, role, created_at FROM users WHERE id = %s", (user_id,))
+            c.execute("SELECT id, name, email, COALESCE(custom_picture, picture) AS picture, role, created_at, avatar_decoration FROM users WHERE id = %s", (user_id,))
         else:
-            c.execute("SELECT id, name, email, picture, role, created_at FROM users WHERE id = ?", (user_id,))
+            c.execute("SELECT id, name, email, COALESCE(custom_picture, picture) AS picture, role, created_at, avatar_decoration FROM users WHERE id = ?", (user_id,))
         row = c.fetchone()
         if not row:
             conn.close()
@@ -3362,6 +3589,7 @@ def public_profile(user_id):
             picture = row['picture'] or ''
             role = normalize_role(row['role'] or 'user')
             created_at = row['created_at'] or ''
+            avatar_decoration = row.get('avatar_decoration')
             uid = row['id']
         else:
             uid = row[0]
@@ -3370,6 +3598,7 @@ def public_profile(user_id):
             picture = row[3] or ''
             role = normalize_role(row[4] if len(row) > 4 else 'user')
             created_at = row[5] if len(row) > 5 else ''
+            avatar_decoration = row[6] if len(row) > 6 else None
         viewer_role = normalize_role(session.get('admin_role') or session.get('role') or 'user')
         show_email = role_priority(viewer_role) >= role_priority('host')
         can_dm = session.get('user_id') != uid
@@ -3386,6 +3615,7 @@ def public_profile(user_id):
             "name": name,
             "email": email,
             "picture": picture,
+            "avatar_decoration": avatar_decoration,
             "role": role,
             "role_display": role.replace('_', ' ').upper(),
             "created_at": created_at,
@@ -3669,9 +3899,9 @@ def get_comments(verse_id):
             if user_id:
                 try:
                     if db_type == 'postgres':
-                        c.execute("SELECT name, picture, role FROM users WHERE id = %s", (user_id,))
+                        c.execute("SELECT name, COALESCE(custom_picture, picture) AS picture, role FROM users WHERE id = %s", (user_id,))
                     else:
-                        c.execute("SELECT name, picture, role FROM users WHERE id = ?", (user_id,))
+                        c.execute("SELECT name, COALESCE(custom_picture, picture) AS picture, role FROM users WHERE id = ?", (user_id,))
                     user_row = c.fetchone()
                     if user_row:
                         try:
@@ -3883,7 +4113,7 @@ def get_community_messages():
             c.execute("""
                 SELECT
                     cm.id, cm.user_id, cm.text, cm.timestamp, cm.google_name, cm.google_picture,
-                    u.name, u.picture, u.role
+                    u.name, COALESCE(u.custom_picture, u.picture) AS picture, u.role
                 FROM community_messages cm
                 LEFT JOIN users u ON cm.user_id = u.id
                 ORDER BY timestamp DESC
@@ -3893,7 +4123,7 @@ def get_community_messages():
             c.execute("""
                 SELECT
                     cm.id, cm.user_id, cm.text, cm.timestamp, cm.google_name, cm.google_picture,
-                    u.name, u.picture, u.role
+                    u.name, COALESCE(u.custom_picture, u.picture) AS picture, u.role
                 FROM community_messages cm
                 LEFT JOIN users u ON cm.user_id = u.id
                 ORDER BY timestamp DESC
@@ -4020,7 +4250,7 @@ def search_users():
         token = f"%{q}%"
         if db_type == 'postgres':
             c.execute("""
-                SELECT id, name, email, picture, role
+                SELECT id, name, email, COALESCE(custom_picture, picture) AS picture, role
                 FROM users
                 WHERE id <> %s AND (COALESCE(name,'') ILIKE %s OR COALESCE(email,'') ILIKE %s)
                 ORDER BY id DESC
@@ -4028,7 +4258,7 @@ def search_users():
             """, (session['user_id'], token, token))
         else:
             c.execute("""
-                SELECT id, name, email, picture, role
+                SELECT id, name, email, COALESCE(custom_picture, picture) AS picture, role
                 FROM users
                 WHERE id <> ? AND (LOWER(COALESCE(name,'')) LIKE LOWER(?) OR LOWER(COALESCE(email,'')) LIKE LOWER(?))
                 ORDER BY id DESC
@@ -4068,7 +4298,7 @@ def recent_users():
         uid = session['user_id']
         if db_type == 'postgres':
             c.execute(f"""
-                SELECT u.id, u.name, u.picture, u.role
+                SELECT u.id, u.name, COALESCE(u.custom_picture, u.picture) AS picture, u.role
                 FROM users u
                 WHERE u.id <> %s AND u.id IN (
                     SELECT user_id FROM comments ORDER BY timestamp DESC LIMIT {limit * 5}
@@ -4080,7 +4310,7 @@ def recent_users():
             """, (uid,))
         else:
             c.execute(f"""
-                SELECT u.id, u.name, u.picture, u.role
+                SELECT u.id, u.name, COALESCE(u.custom_picture, u.picture) AS picture, u.role
                 FROM users u
                 WHERE u.id <> ? AND u.id IN (
                     SELECT user_id FROM comments ORDER BY timestamp DESC LIMIT {limit * 5}
@@ -4145,9 +4375,9 @@ def dm_threads():
                 continue
             # user info
             if db_type == 'postgres':
-                c.execute("SELECT name, picture, role FROM users WHERE id = %s", (other_id,))
+                c.execute("SELECT name, COALESCE(custom_picture, picture) AS picture, role FROM users WHERE id = %s", (other_id,))
             else:
-                c.execute("SELECT name, picture, role FROM users WHERE id = ?", (other_id,))
+                c.execute("SELECT name, COALESCE(custom_picture, picture) AS picture, role FROM users WHERE id = ?", (other_id,))
             urow = c.fetchone()
             if urow:
                 try:

@@ -35,6 +35,21 @@
             border: 3px solid rgba(79,70,229,0.6);
             box-shadow: 0 12px 30px rgba(79,70,229,0.35);
         }
+        .avatar-wrap {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .avatar-decor {
+            position: absolute;
+            inset: -18%;
+            width: 136%;
+            height: 136%;
+            object-fit: contain;
+            pointer-events: none;
+            filter: drop-shadow(0 8px 20px rgba(0,0,0,0.4));
+        }
         .name {
             font-size: 24px;
             font-weight: 700;
@@ -80,7 +95,12 @@
 </head>
 <body>
     <div class="card">
-        <img class="avatar" src="{{ user.picture }}" onerror="this.src='https://ui-avatars.com/api/?name={{ user.name|urlencode }}&background=random'">
+        <div class="avatar-wrap">
+            <img class="avatar" src="{{ user.picture }}" onerror="this.src='https://ui-avatars.com/api/?name={{ user.name|urlencode }}&background=random'">
+            {% if user.avatar_decoration %}
+                <img class="avatar-decor" src="{{ user.avatar_decoration }}" alt="">
+            {% endif %}
+        </div>
         <div class="name">{{ user.name }}</div>
         <div class="role">{{ user.role_display }}</div>
         {% if show_email %}

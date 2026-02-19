@@ -554,6 +554,20 @@
             white-space: nowrap;
             box-shadow: 0 6px 14px rgba(34,197,94,0.3);
         }
+        .lovewell-donate-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            background: linear-gradient(135deg, #16a34a, #22c55e);
+            color: #ffffff;
+            text-decoration: none;
+            padding: 10px 16px;
+            border-radius: 12px;
+            font-weight: 700;
+            margin-top: 10px;
+            box-shadow: 0 10px 20px rgba(34, 197, 94, 0.2);
+        }
 
         .brand:active {
             transform: scale(0.95);
@@ -744,6 +758,9 @@
             }
             .mobile-donate-btn {
                 display: inline-flex;
+            }
+            .lovewell-donate-btn {
+                display: none;
             }
             .lovewell-credit {
                 width: 100%;
@@ -2044,6 +2061,64 @@
             object-fit: cover;
             border: 2px solid var(--glass-border);
         }
+        .avatar-wrap {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .avatar-wrap img {
+            display: block;
+        }
+        .avatar-decor {
+            position: absolute;
+            inset: -12%;
+            width: 124%;
+            height: 124%;
+            object-fit: contain;
+            pointer-events: none;
+            filter: drop-shadow(0 8px 20px rgba(0,0,0,0.4));
+        }
+        .avatar-wrap.avatar-large .avatar-decor {
+            inset: -18%;
+            width: 136%;
+            height: 136%;
+        }
+        .avatar-decor.hidden {
+            display: none;
+        }
+        .avatar-shop-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+            gap: 10px;
+            width: 100%;
+        }
+        .decor-option {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--glass-border);
+            border-radius: 14px;
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+        }
+        .decor-option img {
+            width: 56px;
+            height: 56px;
+            object-fit: contain;
+        }
+        .decor-option.active {
+            border-color: rgba(79,70,229,0.6);
+            box-shadow: 0 10px 26px rgba(79,70,229,0.25);
+            transform: translateY(-2px);
+        }
+        .shop-note {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
 
         .comment-user-link {
             text-decoration: none;
@@ -2308,6 +2383,10 @@
 
         .admin-only.show {
             display: flex;
+        }
+
+        .role-gated {
+            display: none;
         }
 
         .admin-panel-btn {
@@ -3561,8 +3640,7 @@
                          id="lovewellLogo">
                 </a>
                 <div class="lovewell-credit-text">Credit To Cross Community Lovewell for more info check out the About us Or Click the logo thanks for your support!</div>
-                <a href="https://buy.stripe.com/7sY00j7sh4Do6Plaap4ko0b" target="_blank" rel="noopener noreferrer"
-                   style="display:inline-flex; align-items:center; justify-content:center; gap:8px; background: linear-gradient(135deg, #16a34a, #22c55e); color:white; text-decoration:none; padding:10px 16px; border-radius:12px; font-weight:700; margin-top:10px;">
+                <a class="lovewell-donate-btn" href="https://buy.stripe.com/7sY00j7sh4Do6Plaap4ko0b" target="_blank" rel="noopener noreferrer">
                     <span>&#128176;</span>
                     <span>Donate Securely</span>
                 </a>
@@ -3572,7 +3650,10 @@
                 <button class="icon-btn" onclick="openSettings()" title="Settings">&#9881;</button>
                 <button class="icon-btn" onclick="toggleFullscreen()" title="Fullscreen">&#9974;</button>
                 <button class="icon-btn" onclick="showUser()" title="Profile">
-                    <img src="{{ user.picture }}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" onerror="this.src='https://ui-avatars.com/api/?name={{ user.name }}&background=0a84ff&color=fff'">
+                    <span class="avatar-wrap" id="headerAvatarWrap">
+                        <img id="headerAvatarImg" src="{{ user.picture }}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" onerror="this.src='https://ui-avatars.com/api/?name={{ user.name }}&background=0a84ff&color=fff'">
+                        <img id="headerAvatarDecor" class="avatar-decor hidden" alt="">
+                    </span>
                 </button>
             </div>
         </header>
@@ -3899,13 +3980,51 @@
 
                         <div class="comments-list" id="communityList"></div>
                     </div>
+
+                    <!-- Direct Messages -->
+                    <div class="comment-section dm-section" id="dmCommentsSection" style="display:none;">
+                        <div class="comment-section-header">
+                            <span>💬</span>
+                            <span>Direct Messages</span>
+                        </div>
+
+                        <div class="dm-search">
+                            <input type="text" id="dmSearchInput" class="dm-input" placeholder="Search by name or email...">
+                            <button class="btn btn-primary" onclick="searchDmUsers()">Find</button>
+                        </div>
+                        <div class="dm-search-results" id="dmSearchResults" style="display:none;"></div>
+
+                        <div class="dm-layout">
+                            <div>
+                                <div class="dm-thread-list" id="dmThreadList"></div>
+                                <div class="dm-thread-list" id="dmSuggestedList" style="margin-top:8px;"></div>
+                            </div>
+                            <div>
+                                <div class="dm-actions">
+                                    <div style="font-size:12px;color:var(--text-secondary);" id="dmHeaderLabel">No conversation selected</div>
+                                    <button class="btn btn-secondary" onclick="deleteDmThread()">Delete Thread</button>
+                                </div>
+                                <div class="dm-messages" id="dmMessages">
+                                    <div class="empty-state"><div class="empty-state-text">Select a conversation to start chatting.</div></div>
+                                </div>
+                                <div class="dm-typing" id="dmTypingIndicator"></div>
+                                <div class="dm-input-area">
+                                    <input type="text" id="dmInput" class="dm-input" placeholder="Type a message..." onkeydown="if(event.key==='Enter')sendDm()" oninput="scheduleTypingPing()">
+                                    <button class="send-btn" onclick="sendDm()">Send</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
             <!-- PROFILE TAB -->
-            <div id="profile" class="tab-view" data-created-at="{{ user.created_at }}" data-user-name="{{ user.name }}" data-user-email="{{ user.email }}" data-user-picture="{{ user.picture }}">
+            <div id="profile" class="tab-view" data-created-at="{{ user.created_at }}" data-user-name="{{ user.name }}" data-user-email="{{ user.email }}" data-user-picture="{{ user.picture }}" data-user-decor="{{ user.avatar_decoration }}">
                 <div class="glass-card" style="text-align: center; padding: 32px;">
-                    <img id="profileAvatar" src="{{ user.picture }}" style="width: 90px; height: 90px; border-radius: 50%; margin-bottom: 16px; border: 3px solid var(--primary); box-shadow: 0 8px 24px var(--primary-glow);">
+                    <div class="avatar-wrap avatar-large" id="profileAvatarWrap" style="margin-bottom: 16px;">
+                        <img id="profileAvatar" src="{{ user.picture }}" style="width: 90px; height: 90px; border-radius: 50%; border: 3px solid var(--primary); box-shadow: 0 8px 24px var(--primary-glow); object-fit: cover;">
+                        <img id="profileAvatarDecor" class="avatar-decor hidden" alt="">
+                    </div>
                     <div id="profileUserName" style="font-size: 24px; font-weight: 700; margin-bottom: 4px;">{{ user.name }}</div>
                     <div id="profileEmail" style="font-size: 14px; opacity: 0.6;">{{ user.email }}</div>
                     <div style="margin-top: 10px;">
@@ -4185,6 +4304,40 @@
                 <div style="display:flex; gap:8px; align-items:center; width: 100%; max-width: 320px;">
                     <input class="setting-select" id="usernameInput" maxlength="40" placeholder="New username" style="flex:1;">
                     <button class="btn btn-primary" onclick="changeUsername()" style="padding: 8px 12px; font-size: 12px;">Save</button>
+                </div>
+            </div>
+
+            <div class="setting-item role-gated" data-min-role="host" data-display="block" style="flex-direction: column; align-items: flex-start; gap: 12px;">
+                <div>
+                    <div class="setting-label">Avatar Shop (Host+)</div>
+                    <div class="setting-desc">Beta profile customizations for staff testing</div>
+                </div>
+                <div style="width: 100%; display: flex; flex-direction: column; gap: 10px;">
+                    <div style="display:flex; gap:8px; align-items:center; width: 100%; max-width: 520px;">
+                        <input class="setting-select" id="avatarUrlInput" placeholder="Profile picture URL (https://...)" style="flex:1;">
+                        <button class="btn btn-primary" onclick="saveProfilePictureUrl()" style="padding: 8px 12px; font-size: 12px;">Update</button>
+                        <button class="btn btn-secondary" onclick="resetProfilePicture()" style="padding: 8px 12px; font-size: 12px;">Reset</button>
+                    </div>
+                    <div style="display:flex; gap:8px; align-items:center; width: 100%; flex-wrap: wrap;">
+                        <input type="file" id="avatarUploadInput" accept="image/*" style="flex:1; min-width: 180px;">
+                        <label style="display:flex; align-items:center; gap:6px; font-size:12px;">
+                            <input type="checkbox" id="avatarRemoveBgToggle">
+                            Remove background
+                        </label>
+                        <button class="btn btn-primary" onclick="uploadAvatar('picture')" style="padding: 8px 12px; font-size: 12px;">Upload</button>
+                    </div>
+                    <div class="shop-note">Tip: Upload your Discord test image here and enable “Remove background” to make it transparent.</div>
+                    <div style="margin-top: 6px; font-weight: 700;">Avatar Decorations</div>
+                    <div class="avatar-shop-grid" id="avatarDecorPresets"></div>
+                    <div style="display:flex; gap:8px; align-items:center; width: 100%; max-width: 520px;">
+                        <input class="setting-select" id="decorUrlInput" placeholder="Decoration GIF URL (https://...)" style="flex:1;">
+                        <button class="btn btn-primary" onclick="saveAvatarDecorationUrl()" style="padding: 8px 12px; font-size: 12px;">Apply</button>
+                        <button class="btn btn-secondary" onclick="clearAvatarDecoration()" style="padding: 8px 12px; font-size: 12px;">Clear</button>
+                    </div>
+                    <div style="display:flex; gap:8px; align-items:center; width: 100%; flex-wrap: wrap;">
+                        <input type="file" id="decorUploadInput" accept="image/*" style="flex:1; min-width: 180px;">
+                        <button class="btn btn-secondary" onclick="uploadAvatar('decoration')" style="padding: 8px 12px; font-size: 12px;">Upload Decoration</button>
+                    </div>
                 </div>
             </div>
 
@@ -4523,6 +4676,7 @@
         let dmThreadsSignature = '';
         let dmMessagesSignature = '';
         let dmTypingCooldown = null;
+        let currentAvatarDecoration = '';
         const dmThreadsCache = {};
         let aboutIsSliding = false;
         let aboutSyncTimer = null;
@@ -4576,6 +4730,9 @@
             stopVersePolling();
             startVersePolling();
             checkAdminStatus();
+            renderAvatarDecorations();
+            const profileEl = document.getElementById('profile');
+            applyAvatarDecoration(profileEl?.dataset?.userDecor || '');
             
             // Setup textarea auto-resize
             setupTextarea('commentInput');
@@ -4731,6 +4888,16 @@
             return rolePriority(b) > rolePriority(a) ? b : a;
         }
 
+        function applyRoleGatedUI() {
+            const role = userRole || 'user';
+            document.querySelectorAll('.role-gated').forEach(el => {
+                const minRole = el.dataset.minRole || 'user';
+                const show = rolePriority(role) >= rolePriority(minRole);
+                const display = el.dataset.display || (el.classList.contains('setting-item') ? 'flex' : 'block');
+                el.style.display = show ? display : 'none';
+            });
+        }
+
         async function checkAdminStatus() {
             try {
                 const res = await fetch('/api/user_info');
@@ -4759,6 +4926,7 @@
                 
                 // Always update role badge
                 updateRoleBadge(effectiveRole);
+                applyRoleGatedUI();
             } catch (e) {
                 console.error('Admin check failed:', e);
             }
@@ -5934,10 +6102,21 @@
                 const res = await fetch('/api/dm/threads', { cache: 'no-store' });
                 const data = await res.json();
                 if (!res.ok || data.error) return;
+                let list = Array.isArray(data) ? data : [];
+                if (dmSelectedUserId && !list.some(t => t.user_id === dmSelectedUserId)) {
+                    const fallback = dmThreadsCache[dmSelectedUserId] || {
+                        user_id: dmSelectedUserId,
+                        name: dmSelectedUserName || `User #${dmSelectedUserId}`,
+                        picture: '',
+                        last_message: 'Start a conversation',
+                        unread: 0
+                    };
+                    list = [fallback, ...list];
+                }
                 const signature = buildDmThreadsSignature(data);
                 if (!force && signature === dmThreadsSignature) return;
                 dmThreadsSignature = signature;
-                renderDmThreads(data);
+                renderDmThreads(list);
             } catch (_) {}
         }
 
@@ -5956,9 +6135,22 @@
             } catch (_) {}
         }
 
-        function openDmThread(userId) {
+        function openDmThread(userId, userName = '', userPicture = '') {
+            if (!userId) return;
+            if (currentTab !== 'comments') switchTab('comments');
+            if (currentCommentsView !== 'dm') switchCommentsView('dm');
             dmSelectedUserId = userId;
+            if (userName) dmSelectedUserName = userName;
             dmMessagesSignature = '';
+            if (!dmThreadsCache[userId]) {
+                dmThreadsCache[userId] = {
+                    user_id: userId,
+                    name: userName || dmSelectedUserName || `User #${userId}`,
+                    picture: userPicture || '',
+                    last_message: 'Start a conversation',
+                    unread: 0
+                };
+            }
             const label = document.getElementById('dmHeaderLabel');
             if (label) {
                 const thread = dmThreadsCache[userId];
@@ -5970,6 +6162,7 @@
                 results.style.display = 'none';
                 results.innerHTML = '';
             }
+            renderDmThreads(Object.values(dmThreadsCache));
             loadDmThreads(true);
             loadDmMessages(true);
         }
@@ -6078,10 +6271,11 @@
             `).join('');
         }
 
-        function openDmFromComment(userId) {
+        function openDmFromComment(userId, userName = '', userPicture = '') {
             if (!userId) return;
+            switchTab('comments');
             switchCommentsView('dm');
-            openDmThread(userId);
+            openDmThread(userId, userName, userPicture);
         }
 
         function formatLocalTimestamp(ts, options) {
@@ -6185,45 +6379,13 @@
                         </div>
                     </div>
 
-                    <!-- Direct Messages -->
-                    <div class="comment-section dm-section" id="dmCommentsSection" style="display:none;">
-                        <div class="comment-section-header">
-                            <span>💬</span>
-                            <span>Direct Messages</span>
-                        </div>
-
-                        <div class="dm-search">
-                            <input type="text" id="dmSearchInput" class="dm-input" placeholder="Search by name or email...">
-                            <button class="btn btn-primary" onclick="searchDmUsers()">Find</button>
-                        </div>
-                        <div class="dm-search-results" id="dmSearchResults" style="display:none;"></div>
-
-                        <div class="dm-layout">
-                        <div class="dm-thread-list" id="dmThreadList"></div>
-                        <div class="dm-thread-list" id="dmSuggestedList" style="margin-top:8px;"></div>
-                            <div>
-                                <div class="dm-actions">
-                                    <div style="font-size:12px;color:var(--text-secondary);" id="dmHeaderLabel">No conversation selected</div>
-                                    <button class="btn btn-secondary" onclick="deleteDmThread()">Delete Thread</button>
-                                </div>
-                                <div class="dm-messages" id="dmMessages">
-                                    <div class="empty-state"><div class="empty-state-text">Select a conversation to start chatting.</div></div>
-                                </div>
-                                <div class="dm-typing" id="dmTypingIndicator"></div>
-                                <div class="dm-input-area">
-                                    <input type="text" id="dmInput" class="dm-input" placeholder="Type a message..." onkeydown="if(event.key==='Enter')sendDm()" oninput="scheduleTypingPing()">
-                                    <button class="send-btn" onclick="sendDm()">Send</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
                     <div class="comment-text">${escapeHtml(c.text)}</div>
                     <div class="reaction-bar">
                         <button class="reaction-btn" onclick="addReaction(${c.id}, '${type}', 'heart', this)">❤️ ${reactions['heart'] || 0}</button>
                         <button class="reaction-btn" onclick="addReaction(${c.id}, '${type}', 'pray', this)">🙏 ${reactions['pray'] || 0}</button>
                         <button class="reaction-btn" onclick="addReaction(${c.id}, '${type}', 'cross', this)">✝️ ${reactions['cross'] || 0}</button>
                         <button class="reply-btn" ${replyDisabled} onclick="showReplyBox(${c.id}, '${type}')">Reply (${c.reply_count || replies.length || 0})</button>
-                        ${canDm ? `<button class="reply-btn" onclick="openDmFromComment(${c.user_id})">DM</button>` : ''}
+                        ${canDm ? `<button class="reply-btn" onclick="openDmFromComment(${c.user_id}, ${JSON.stringify(c.user_name || 'User')}, ${JSON.stringify(c.user_picture || '')})">DM</button>` : ''}
                     </div>
                     <div class="comment-replies" id="replies-${type}-${c.id}">${renderReplies(replies)}</div>
                     <div class="reply-input-area" id="reply-box-${type}-${c.id}" style="display: ${replyOpen ? 'flex' : 'none'};">
@@ -6349,12 +6511,17 @@
             const effectiveName = userData.name || fallbackName || 'User';
             const effectiveEmail = userData.email || fallbackEmail || '';
             const effectivePicture = userData.picture || fallbackPicture || '';
+            const effectiveDecor = userData.avatar_decoration || profileEl?.dataset?.userDecor || '';
+            if (profileEl) profileEl.dataset.userDecor = effectiveDecor || '';
             const nameEl = document.getElementById('profileUserName');
             if (nameEl) nameEl.textContent = effectiveName;
             const emailEl = document.getElementById('profileEmail');
             if (emailEl) emailEl.textContent = effectiveEmail;
             const avatarEl = document.getElementById('profileAvatar');
             if (avatarEl && effectivePicture) avatarEl.src = effectivePicture;
+            updateHeaderAvatar(effectivePicture);
+            applyAvatarDecoration(effectiveDecor);
+            renderAvatarDecorations();
             
             const memberEl = document.getElementById('memberSince');
             if (memberEl) {
@@ -6380,6 +6547,159 @@
             loadFavoriteBooks();
             loadVerseHistory();
             updateXpDisplay();
+        }
+
+        const AVATAR_DECORATIONS = [];
+
+        function updateHeaderAvatar(url) {
+            const headerImg = document.getElementById('headerAvatarImg');
+            if (headerImg && url) headerImg.src = url;
+        }
+
+        function applyAvatarDecoration(url) {
+            currentAvatarDecoration = url || '';
+            const headerDecor = document.getElementById('headerAvatarDecor');
+            const profileDecor = document.getElementById('profileAvatarDecor');
+            [headerDecor, profileDecor].forEach(el => {
+                if (!el) return;
+                if (!currentAvatarDecoration) {
+                    el.classList.add('hidden');
+                    el.removeAttribute('src');
+                } else {
+                    el.src = currentAvatarDecoration;
+                    el.classList.remove('hidden');
+                }
+            });
+        }
+
+        function renderAvatarDecorations() {
+            const grid = document.getElementById('avatarDecorPresets');
+            if (!grid) return;
+            if (!AVATAR_DECORATIONS.length) {
+                grid.innerHTML = '<div class="shop-note">No presets yet. Upload a decoration or paste a GIF URL.</div>';
+                return;
+            }
+            grid.innerHTML = AVATAR_DECORATIONS.map(d => `
+                <div class="decor-option ${currentAvatarDecoration === d.url ? 'active' : ''}" onclick="setAvatarDecorationPreset('${d.url}')">
+                    <img src="${d.url}" alt="${escapeHtml(d.name || '')}">
+                    <div style="font-size:11px; text-align:center;">${escapeHtml(d.name || 'Decoration')}</div>
+                </div>
+            `).join('');
+        }
+
+        function setAvatarDecorationPreset(url) {
+            if (!url) return;
+            saveAvatarDecorationUrl(url);
+        }
+
+        async function saveProfilePictureUrl() {
+            const input = document.getElementById('avatarUrlInput');
+            const url = (input?.value || '').trim();
+            if (!url) return;
+            const res = await fetch('/api/user/avatar', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ kind: 'picture', url })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || data.error) {
+                showToast(data.error || 'Update failed');
+                return;
+            }
+            updateHeaderAvatar(data.picture);
+            const profileAvatar = document.getElementById('profileAvatar');
+            if (profileAvatar && data.picture) profileAvatar.src = data.picture;
+            const profileEl = document.getElementById('profile');
+            if (profileEl && data.picture) profileEl.dataset.userPicture = data.picture;
+            showToast('Profile picture updated');
+        }
+
+        async function resetProfilePicture() {
+            const res = await fetch('/api/user/avatar', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ kind: 'picture', reset: true })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || data.error) {
+                showToast(data.error || 'Reset failed');
+                return;
+            }
+            updateHeaderAvatar(data.picture);
+            const profileAvatar = document.getElementById('profileAvatar');
+            if (profileAvatar && data.picture) profileAvatar.src = data.picture;
+            const profileEl = document.getElementById('profile');
+            if (profileEl && data.picture) profileEl.dataset.userPicture = data.picture;
+            showToast('Profile picture reset');
+        }
+
+        async function saveAvatarDecorationUrl(urlOverride = '') {
+            const input = document.getElementById('decorUrlInput');
+            const url = (urlOverride || input?.value || '').trim();
+            if (!url) return;
+            const res = await fetch('/api/user/avatar', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ kind: 'decoration', url })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || data.error) {
+                showToast(data.error || 'Update failed');
+                return;
+            }
+            applyAvatarDecoration(data.avatar_decoration);
+            renderAvatarDecorations();
+            showToast('Decoration applied');
+        }
+
+        async function clearAvatarDecoration() {
+            const res = await fetch('/api/user/avatar', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ kind: 'decoration', reset: true })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || data.error) {
+                showToast(data.error || 'Clear failed');
+                return;
+            }
+            applyAvatarDecoration('');
+            renderAvatarDecorations();
+            showToast('Decoration cleared');
+        }
+
+        async function uploadAvatar(kind) {
+            const input = kind === 'decoration' ? document.getElementById('decorUploadInput') : document.getElementById('avatarUploadInput');
+            const file = input?.files?.[0];
+            if (!file) {
+                showToast('Select a file first');
+                return;
+            }
+            const form = new FormData();
+            form.append('file', file);
+            form.append('kind', kind);
+            if (kind === 'picture') {
+                const removeBg = document.getElementById('avatarRemoveBgToggle');
+                form.append('remove_bg', removeBg && removeBg.checked ? '1' : '0');
+            }
+            const res = await fetch('/api/user/avatar-upload', { method: 'POST', body: form });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || data.error) {
+                showToast(data.error || 'Upload failed');
+                return;
+            }
+            if (kind === 'picture') {
+                updateHeaderAvatar(data.picture);
+                const profileAvatar = document.getElementById('profileAvatar');
+                if (profileAvatar && data.picture) profileAvatar.src = data.picture;
+                const profileEl = document.getElementById('profile');
+                if (profileEl && data.picture) profileEl.dataset.userPicture = data.picture;
+                showToast(data.warning ? `Uploaded (note: ${data.warning})` : 'Profile picture uploaded');
+            } else {
+                applyAvatarDecoration(data.avatar_decoration);
+                renderAvatarDecorations();
+                showToast('Decoration uploaded');
+            }
         }
 
         // === PROFILE ADD-ONS ===

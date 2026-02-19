@@ -830,6 +830,31 @@ def ensure_comment_social_tables(c, db_type):
             )
         """)
 
+def ensure_dm_tables(c, db_type):
+    """Ensure direct message tables exist before use."""
+    if db_type == 'postgres':
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS direct_messages (
+                id SERIAL PRIMARY KEY,
+                sender_id INTEGER NOT NULL,
+                recipient_id INTEGER NOT NULL,
+                message TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_read INTEGER DEFAULT 0
+            )
+        """)
+    else:
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS direct_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sender_id INTEGER NOT NULL,
+                recipient_id INTEGER NOT NULL,
+                message TEXT NOT NULL,
+                created_at TEXT,
+                is_read INTEGER DEFAULT 0
+            )
+        """)
+
 def get_reaction_counts(c, db_type, item_type, item_id):
     reactions = {"heart": 0, "pray": 0, "cross": 0}
     if db_type == 'postgres':
@@ -1427,7 +1452,10 @@ def check_user_banned():
         maintenance_enabled = str(maintenance_raw).strip().lower() in ('1', 'true', 'yes', 'on')
         if maintenance_enabled and not session.get('admin_role'):
             if request.is_json or path.startswith('/api/'):
-                return jsonify({"error": "maintenance", "message": "Site is under maintenance"}), 503
+                return jsonify({
+                    "error": "maintenance",
+                    "message": "Server is currently down due to maintenance. Come back later, thanks for waiting."
+                }), 503
             return render_template_string("""
             <!DOCTYPE html>
             <html>
@@ -1440,7 +1468,7 @@ def check_user_banned():
             <body>
                 <div class="box">
                     <h1>Maintenance Mode</h1>
-                    <p>We are upgrading the experience right now. Please check back shortly.</p>
+                    <p>Server is currently down due to maintenance. Come back later, thanks for waiting.</p>
                 </div>
             </body>
             </html>
@@ -2646,8 +2674,8 @@ def get_stats():
         
         logger.info(f"Stats for user {session['user_id']}: verses={total}, liked={liked}, saved={saved}, comments={comments}, community={community}, replies={replies}")
         
-        # Return total comments including community for the profile count
-        total_comments = comments + community + replies
+        # Return total comments (verse + community). Replies are separate.
+        total_comments = comments + community
         
         return jsonify({"total_verses": total, "liked": liked, "saved": saved, "comments": total_comments, "replies": replies})
     except Exception as e:
@@ -3262,7 +3290,7 @@ def db_status():
         counts = {}
         for table in [
             'users', 'verses', 'likes', 'saves', 'comments', 'comment_replies',
-            'community_messages', 'audit_logs', 'daily_actions', 'notifications'
+            'community_messages', 'direct_messages', 'audit_logs', 'daily_actions', 'notifications'
         ]:
             try:
                 c.execute(f"SELECT COUNT(*) FROM {table}")
@@ -3303,7 +3331,7 @@ def db_check():
         tables = _list_tables(conn, db_type)
         required = [
             'users', 'verses', 'likes', 'saves', 'comments', 'comment_replies',
-            'community_messages', 'audit_logs', 'daily_actions', 'notifications'
+            'community_messages', 'direct_messages', 'audit_logs', 'daily_actions', 'notifications'
         ]
         missing_tables = [t for t in required if t not in tables]
         table_info = {}
@@ -3897,6 +3925,268 @@ def post_community_message():
         return jsonify({"success": True})
     except Exception as e:
         logger.error(f"Post community error: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/users/search')
+def search_users():
+    if 'user_id' not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    q = (request.args.get('q') or '').strip()
+    if len(q) < 2:
+        return jsonify([])
+    conn, db_type = get_db()
+    c = get_cursor(conn, db_type)
+    try:
+        token = f"%{q}%"
+        if db_type == 'postgres':
+            c.execute("""
+                SELECT id, name, email, picture, role
+                FROM users
+                WHERE id <> %s AND (COALESCE(name,'') ILIKE %s OR COALESCE(email,'') ILIKE %s)
+                ORDER BY id DESC
+                LIMIT 10
+            """, (session['user_id'], token, token))
+        else:
+            c.execute("""
+                SELECT id, name, email, picture, role
+                FROM users
+                WHERE id <> ? AND (LOWER(COALESCE(name,'')) LIKE LOWER(?) OR LOWER(COALESCE(email,'')) LIKE LOWER(?))
+                ORDER BY id DESC
+                LIMIT 10
+            """, (session['user_id'], token, token))
+        rows = c.fetchall()
+        results = []
+        for row in rows:
+            try:
+                results.append({
+                    "id": row['id'],
+                    "name": row['name'] or "User",
+                    "picture": row['picture'] or "",
+                    "role": normalize_role(row['role'] or 'user')
+                })
+            except Exception:
+                results.append({
+                    "id": row[0],
+                    "name": row[1] or "User",
+                    "picture": row[3] or "",
+                    "role": normalize_role(row[4] if len(row) > 4 else 'user')
+                })
+        return jsonify(results)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/dm/threads')
+def dm_threads():
+    if 'user_id' not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    is_banned, _, _ = check_ban_status(session['user_id'])
+    if is_banned:
+        return jsonify({"error": "banned"}), 403
+    conn, db_type = get_db()
+    c = get_cursor(conn, db_type)
+    try:
+        ensure_dm_tables(c, db_type)
+        conn.commit()
+        uid = session['user_id']
+        if db_type == 'postgres':
+            c.execute("""
+                SELECT recipient_id AS other_id FROM direct_messages WHERE sender_id = %s
+                UNION
+                SELECT sender_id AS other_id FROM direct_messages WHERE recipient_id = %s
+            """, (uid, uid))
+        else:
+            c.execute("""
+                SELECT recipient_id AS other_id FROM direct_messages WHERE sender_id = ?
+                UNION
+                SELECT sender_id AS other_id FROM direct_messages WHERE recipient_id = ?
+            """, (uid, uid))
+        ids = [row['other_id'] if hasattr(row, 'keys') else row[0] for row in c.fetchall()]
+        threads = []
+        for other_id in ids:
+            if other_id is None:
+                continue
+            # user info
+            if db_type == 'postgres':
+                c.execute("SELECT name, picture, role FROM users WHERE id = %s", (other_id,))
+            else:
+                c.execute("SELECT name, picture, role FROM users WHERE id = ?", (other_id,))
+            urow = c.fetchone()
+            if urow:
+                try:
+                    name = urow['name'] or 'User'
+                    picture = urow['picture'] or ''
+                    role = normalize_role(urow['role'] or 'user')
+                except Exception:
+                    name = urow[0] or 'User'
+                    picture = urow[1] or ''
+                    role = normalize_role(urow[2] if len(urow) > 2 else 'user')
+            else:
+                name, picture, role = 'User', '', 'user'
+            # last message
+            if db_type == 'postgres':
+                c.execute("""
+                    SELECT message, created_at, sender_id
+                    FROM direct_messages
+                    WHERE (sender_id = %s AND recipient_id = %s) OR (sender_id = %s AND recipient_id = %s)
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT 1
+                """, (uid, other_id, other_id, uid))
+            else:
+                c.execute("""
+                    SELECT message, created_at, sender_id
+                    FROM direct_messages
+                    WHERE (sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?)
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT 1
+                """, (uid, other_id, other_id, uid))
+            last = c.fetchone()
+            if last:
+                try:
+                    last_msg = last['message']
+                    last_at = last['created_at']
+                    last_sender = last['sender_id']
+                except Exception:
+                    last_msg = last[0]
+                    last_at = last[1]
+                    last_sender = last[2]
+            else:
+                last_msg = ''
+                last_at = None
+                last_sender = None
+            # unread count
+            if db_type == 'postgres':
+                c.execute("SELECT COUNT(*) FROM direct_messages WHERE sender_id = %s AND recipient_id = %s AND COALESCE(is_read,0) = 0", (other_id, uid))
+            else:
+                c.execute("SELECT COUNT(*) FROM direct_messages WHERE sender_id = ? AND recipient_id = ? AND COALESCE(is_read,0) = 0", (other_id, uid))
+            unread = c.fetchone()
+            unread_count = unread[0] if unread else 0
+            threads.append({
+                "user_id": other_id,
+                "name": name,
+                "picture": picture,
+                "role": role,
+                "last_message": last_msg,
+                "last_at": last_at,
+                "last_sender": last_sender,
+                "unread": unread_count
+            })
+        threads.sort(key=lambda t: t.get('last_at') or '', reverse=True)
+        return jsonify(threads)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/dm/messages/<int:other_id>')
+def dm_messages(other_id):
+    if 'user_id' not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    is_banned, _, _ = check_ban_status(session['user_id'])
+    if is_banned:
+        return jsonify({"error": "banned"}), 403
+    if other_id == session['user_id']:
+        return jsonify({"error": "Invalid target"}), 400
+    conn, db_type = get_db()
+    c = get_cursor(conn, db_type)
+    try:
+        ensure_dm_tables(c, db_type)
+        conn.commit()
+        uid = session['user_id']
+        if db_type == 'postgres':
+            c.execute("""
+                SELECT id, sender_id, recipient_id, message, created_at, is_read
+                FROM direct_messages
+                WHERE (sender_id = %s AND recipient_id = %s) OR (sender_id = %s AND recipient_id = %s)
+                ORDER BY created_at ASC, id ASC
+                LIMIT 200
+            """, (uid, other_id, other_id, uid))
+        else:
+            c.execute("""
+                SELECT id, sender_id, recipient_id, message, created_at, is_read
+                FROM direct_messages
+                WHERE (sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?)
+                ORDER BY created_at ASC, id ASC
+                LIMIT 200
+            """, (uid, other_id, other_id, uid))
+        rows = c.fetchall()
+        messages = []
+        for row in rows:
+            try:
+                messages.append({
+                    "id": row['id'],
+                    "sender_id": row['sender_id'],
+                    "recipient_id": row['recipient_id'],
+                    "message": row['message'],
+                    "created_at": row['created_at'],
+                    "is_read": row['is_read']
+                })
+            except Exception:
+                messages.append({
+                    "id": row[0],
+                    "sender_id": row[1],
+                    "recipient_id": row[2],
+                    "message": row[3],
+                    "created_at": row[4],
+                    "is_read": row[5] if len(row) > 5 else 0
+                })
+        # mark read
+        if db_type == 'postgres':
+            c.execute("UPDATE direct_messages SET is_read = 1 WHERE sender_id = %s AND recipient_id = %s", (other_id, uid))
+        else:
+            c.execute("UPDATE direct_messages SET is_read = 1 WHERE sender_id = ? AND recipient_id = ?", (other_id, uid))
+        conn.commit()
+        return jsonify(messages)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/dm/send', methods=['POST'])
+def dm_send():
+    if 'user_id' not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    is_banned, _, _ = check_ban_status(session['user_id'])
+    if is_banned:
+        return jsonify({"error": "banned"}), 403
+    is_restricted, reason, expires_at = check_comment_restriction(session['user_id'])
+    if is_restricted:
+        expires_str = datetime.fromisoformat(expires_at).strftime("%Y-%m-%d %H:%M") if expires_at else "soon"
+        return jsonify({
+            "error": "restricted",
+            "message": f"You have been restricted from chatting due to {reason}",
+            "reason": reason,
+            "expires_at": expires_str
+        }), 403
+    data = request.get_json() or {}
+    recipient_id = int(data.get('recipient_id') or 0)
+    message = (data.get('message') or '').strip()
+    if not recipient_id or recipient_id == session['user_id']:
+        return jsonify({"error": "Invalid recipient"}), 400
+    if not message:
+        return jsonify({"error": "Empty message"}), 400
+    conn, db_type = get_db()
+    c = get_cursor(conn, db_type)
+    try:
+        ensure_dm_tables(c, db_type)
+        conn.commit()
+        now = datetime.now().isoformat()
+        if db_type == 'postgres':
+            c.execute("""
+                INSERT INTO direct_messages (sender_id, recipient_id, message, created_at, is_read)
+                VALUES (%s, %s, %s, %s, 0)
+            """, (session['user_id'], recipient_id, message, now))
+        else:
+            c.execute("""
+                INSERT INTO direct_messages (sender_id, recipient_id, message, created_at, is_read)
+                VALUES (?, ?, ?, ?, 0)
+            """, (session['user_id'], recipient_id, message, now))
+        conn.commit()
+        return jsonify({"success": True})
+    except Exception as e:
         return jsonify({"error": str(e)}), 500
     finally:
         conn.close()

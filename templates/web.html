@@ -1708,6 +1708,122 @@
             background: rgba(255,255,255,0.14);
         }
 
+        .dm-layout {
+            display: grid;
+            grid-template-columns: 240px 1fr;
+            gap: 12px;
+        }
+
+        .dm-thread-list {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 14px;
+            padding: 10px;
+            max-height: 360px;
+            overflow-y: auto;
+        }
+
+        .dm-thread {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            padding: 8px 10px;
+            border-radius: 12px;
+            cursor: pointer;
+            border: 1px solid transparent;
+        }
+
+        .dm-thread:hover {
+            background: rgba(255,255,255,0.06);
+            border-color: var(--glass-border);
+        }
+
+        .dm-thread.active {
+            background: rgba(79,70,229,0.18);
+            border-color: rgba(79,70,229,0.4);
+        }
+
+        .dm-thread-avatar {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+
+        .dm-thread-name {
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .dm-thread-last {
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        .dm-messages {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 14px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            min-height: 240px;
+        }
+
+        .dm-message {
+            max-width: 75%;
+            padding: 8px 12px;
+            border-radius: 14px;
+            font-size: 13px;
+            line-height: 1.4;
+            background: rgba(255,255,255,0.08);
+        }
+
+        .dm-message.self {
+            margin-left: auto;
+            background: rgba(79,70,229,0.35);
+        }
+
+        .dm-input-area {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-top: 10px;
+        }
+
+        .dm-input {
+            flex: 1;
+            background: rgba(0,0,0,0.35);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            color: var(--text);
+            padding: 8px 10px;
+            font-size: 13px;
+        }
+
+        .dm-search {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .dm-search-results {
+            background: rgba(0,0,0,0.35);
+            border: 1px solid var(--glass-border);
+            border-radius: 10px;
+            padding: 6px;
+            max-height: 160px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+        }
+
+        @media (max-width: 900px) {
+            .dm-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
         .comment-input-area {
             background: var(--glass-bg);
             border-radius: 20px;
@@ -3679,12 +3795,14 @@
                     <div style="display:flex; gap:8px; margin-bottom:10px;">
                         <button class="segment-btn active" id="commentsViewVerseBtn" onclick="switchCommentsView('verse')">Verse</button>
                         <button class="segment-btn" id="commentsViewCommunityBtn" onclick="switchCommentsView('community')">Community</button>
+                        <button class="segment-btn" id="commentsViewDmBtn" onclick="switchCommentsView('dm')">DMs</button>
                     </div>
                     <!-- Current Verse Comments -->
                     <div class="comment-section" id="verseCommentsSection">
                         <div class="comment-section-header">
                             <span>&#128172;</span>
                             <span>Comments on <span id="commentVerseRef" style="color: var(--primary);">Current Verse</span></span>
+                            <button class="comment-pin-btn" id="commentVerseSyncBtn" onclick="syncCommentVerse()">Use current verse</button>
                         </div>
                         
                         <!-- Emoji Picker -->
@@ -4292,6 +4410,9 @@
         let themeAuto = false;
         let lastCommentsSignature = '';
         let lastCommunitySignature = '';
+        let activeCommentVerseId = null;
+        let activeCommentVerseRef = null;
+        let commentVerseLocked = false;
         let wakeLockHandle = null;
         
         // Text to Speech
@@ -4368,6 +4489,9 @@
         let aboutSlideIndex = 0;
         let aboutTouchStartX = null;
         let aboutTouchMoved = false;
+        let dmSelectedUserId = null;
+        let dmThreadsSignature = '';
+        let dmMessagesSignature = '';
         let aboutIsSliding = false;
         let aboutSyncTimer = null;
         let aboutVideoErrorCount = 0;
@@ -4792,8 +4916,16 @@
             
             if (tab === 'library') loadLibrary();
             if (tab === 'comments') {
+                if (currentCommentsView === 'verse') {
+                    if (!activeCommentVerseId && currentVerse) {
+                        setActiveCommentVerse(currentVerse);
+                    }
+                }
                 if (currentCommentsView === 'community') loadCommunityMessages();
-                else loadComments();
+                else if (currentCommentsView === 'dm') {
+                    loadDmThreads(true);
+                    loadDmMessages(true);
+                } else loadComments();
                 startCommentsPolling();
                 updateOnlineUsers();
                 updateRestrictionUI();
@@ -4960,7 +5092,9 @@
                     document.getElementById('verseRef').textContent = data.verse.ref;
                     document.getElementById('verseSource').textContent = data.verse.source;
                     document.getElementById('fullscreenText').textContent = `"${data.verse.text}"\n\n— ${data.verse.ref}`;
-                    document.getElementById('commentVerseRef').textContent = data.verse.ref;
+                    if (!commentVerseLocked) {
+                        setActiveCommentVerse(data.verse);
+                    }
                     
                     syncCountdown(data.countdown, data.interval);
                     syncIntervalSetting(data.interval);
@@ -5012,6 +5146,21 @@
             const mins = Math.floor(safe / 60);
             const secs = safe % 60;
             return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        }
+
+        function setActiveCommentVerse(verse) {
+            if (!verse) return;
+            activeCommentVerseId = verse.id;
+            activeCommentVerseRef = verse.ref || 'Current Verse';
+            const refEl = document.getElementById('commentVerseRef');
+            if (refEl) refEl.textContent = activeCommentVerseRef;
+        }
+
+        function syncCommentVerse() {
+            if (!currentVerse) return;
+            commentVerseLocked = false;
+            setActiveCommentVerse(currentVerse);
+            loadComments(true);
         }
 
         async function checkStatus(verseId) {
@@ -5528,10 +5677,11 @@
 
         // Comments
         async function loadComments(force = false) {
-            if (!currentVerse) return;
+            const verseForComments = activeCommentVerseId || (currentVerse ? currentVerse.id : null);
+            if (!verseForComments) return;
             if (!force && isCommentsInputActive()) return;
             captureActiveReplyDraft();
-            const res = await fetch(`/api/comments/${currentVerse.id}`, { cache: 'no-store' });
+            const res = await fetch(`/api/comments/${verseForComments}`, { cache: 'no-store' });
             const data = await res.json().catch(() => ([]));
             if (!res.ok || data.error) {
                 if (data.error === 'banned') {
@@ -5567,7 +5717,10 @@
         async function postComment() {
             const input = document.getElementById('commentInput');
             const text = input.value.trim();
-            if (!text || !currentVerse) return;
+            if (!text) return;
+            const verseId = activeCommentVerseId || (currentVerse ? currentVerse.id : null);
+            if (!verseId) return;
+            commentVerseLocked = true;
             if (commentRestriction.restricted) {
                 showToast(commentRestriction.reason ? `Chat disabled: ${commentRestriction.reason}` : 'Chat disabled');
                 return;
@@ -5576,7 +5729,7 @@
             const res = await fetch('/api/comments', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({verse_id: currentVerse.id, text: text})
+                body: JSON.stringify({verse_id: verseId, text: text})
             });
 
             const data = await res.json().catch(() => ({}));
@@ -5657,6 +5810,152 @@
             input.style.height = 'auto';
             loadCommunityMessages(true);
             if (settings.notifications) showToast('Message posted!');
+        }
+
+        // ===== Direct Messages =====
+        function buildDmThreadsSignature(threads) {
+            if (!Array.isArray(threads)) return '';
+            return threads.map(t => `${t.user_id}:${(t.last_message || '').length}:${t.last_at || ''}:${t.unread || 0}`).join('|');
+        }
+
+        function buildDmMessagesSignature(messages) {
+            if (!Array.isArray(messages)) return '';
+            return messages.map(m => `${m.id}:${m.sender_id}:${(m.message || '').length}`).join('|');
+        }
+
+        function renderDmThreads(threads) {
+            const list = document.getElementById('dmThreadList');
+            if (!list) return;
+            if (!threads.length) {
+                list.innerHTML = '<div class="empty-state"><div class="empty-state-text">No conversations yet.</div></div>';
+                return;
+            }
+            list.innerHTML = threads.map(t => {
+                const active = dmSelectedUserId === t.user_id ? 'active' : '';
+                const unread = t.unread ? ` • ${t.unread} new` : '';
+                return `
+                    <div class="dm-thread ${active}" onclick="openDmThread(${t.user_id})">
+                        <img class="dm-thread-avatar" src="${t.picture || ''}" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(t.name || 'User')}&background=random'">
+                        <div>
+                            <div class="dm-thread-name">${escapeHtml(t.name || 'User')}</div>
+                            <div class="dm-thread-last">${escapeHtml(t.last_message || 'No messages yet')}${unread}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderDmMessages(messages) {
+            const box = document.getElementById('dmMessages');
+            if (!box) return;
+            if (!messages.length) {
+                box.innerHTML = '<div class="empty-state"><div class="empty-state-text">No messages yet.</div></div>';
+                return;
+            }
+            box.innerHTML = messages.map(m => {
+                const self = m.sender_id === {{ user.id }};
+                return `
+                    <div class="dm-message ${self ? 'self' : ''}">
+                        ${escapeHtml(m.message || '')}
+                        <div style="font-size:10px;opacity:0.6;margin-top:4px;">${formatLocalTimestamp(m.created_at)}</div>
+                    </div>
+                `;
+            }).join('');
+            box.scrollTop = box.scrollHeight;
+        }
+
+        async function loadDmThreads(force = false) {
+            if (!force && isCommentsInputActive()) return;
+            try {
+                const res = await fetch('/api/dm/threads', { cache: 'no-store' });
+                const data = await res.json();
+                if (!res.ok || data.error) return;
+                const signature = buildDmThreadsSignature(data);
+                if (!force && signature === dmThreadsSignature) return;
+                dmThreadsSignature = signature;
+                renderDmThreads(data);
+            } catch (_) {}
+        }
+
+        async function loadDmMessages(force = false) {
+            if (!dmSelectedUserId) return;
+            if (!force && isCommentsInputActive()) return;
+            try {
+                const res = await fetch(`/api/dm/messages/${dmSelectedUserId}`, { cache: 'no-store' });
+                const data = await res.json();
+                if (!res.ok || data.error) return;
+                const signature = buildDmMessagesSignature(data);
+                if (!force && signature === dmMessagesSignature) return;
+                dmMessagesSignature = signature;
+                renderDmMessages(data);
+            } catch (_) {}
+        }
+
+        function openDmThread(userId) {
+            dmSelectedUserId = userId;
+            dmMessagesSignature = '';
+            const results = document.getElementById('dmSearchResults');
+            if (results) {
+                results.style.display = 'none';
+                results.innerHTML = '';
+            }
+            loadDmThreads(true);
+            loadDmMessages(true);
+        }
+
+        async function sendDm() {
+            if (!dmSelectedUserId) {
+                showToast('Pick a user first');
+                return;
+            }
+            const input = document.getElementById('dmInput');
+            const message = (input.value || '').trim();
+            if (!message) return;
+            const res = await fetch('/api/dm/send', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ recipient_id: dmSelectedUserId, message })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || data.error) {
+                showToast(data.message || data.error || 'Message failed');
+                return;
+            }
+            input.value = '';
+            loadDmMessages(true);
+            loadDmThreads(true);
+        }
+
+        async function searchDmUsers() {
+            const input = document.getElementById('dmSearchInput');
+            const q = (input.value || '').trim();
+            if (q.length < 2) {
+                showToast('Type at least 2 characters');
+                return;
+            }
+            const res = await fetch(`/api/users/search?q=${encodeURIComponent(q)}`);
+            const data = await res.json().catch(() => ([]));
+            const results = document.getElementById('dmSearchResults');
+            if (!res.ok || data.error) {
+                results.style.display = 'block';
+                results.innerHTML = '<div class="empty-state"><div class="empty-state-text">Search failed.</div></div>';
+                return;
+            }
+            if (!data.length) {
+                results.style.display = 'block';
+                results.innerHTML = '<div class="empty-state"><div class="empty-state-text">No users found.</div></div>';
+                return;
+            }
+            results.style.display = 'block';
+            results.innerHTML = data.map(u => `
+                <div class="dm-thread" onclick="openDmThread(${u.id})">
+                    <img class="dm-thread-avatar" src="${u.picture || ''}" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(u.name || 'User')}&background=random'">
+                    <div>
+                        <div class="dm-thread-name">${escapeHtml(u.name || 'User')}</div>
+                        <div class="dm-thread-last">${escapeHtml(u.role || 'user')}</div>
+                    </div>
+                </div>
+            `).join('');
         }
 
         function formatLocalTimestamp(ts, options) {
@@ -5746,6 +6045,33 @@
                                 <span class="comment-role-badge comment-role-${role}">${escapeHtml(roleDisplay)}</span>
                             </div>
                             <div class="comment-time">${formatLocalTimestamp(c.timestamp)}</div>
+                        </div>
+                    </div>
+
+                    <!-- Direct Messages -->
+                    <div class="comment-section dm-section" id="dmCommentsSection" style="display:none;">
+                        <div class="comment-section-header">
+                            <span>💬</span>
+                            <span>Direct Messages</span>
+                        </div>
+
+                        <div class="dm-search">
+                            <input type="text" id="dmSearchInput" class="dm-input" placeholder="Search by name or email...">
+                            <button class="btn btn-primary" onclick="searchDmUsers()">Find</button>
+                        </div>
+                        <div class="dm-search-results" id="dmSearchResults" style="display:none;"></div>
+
+                        <div class="dm-layout">
+                            <div class="dm-thread-list" id="dmThreadList"></div>
+                            <div>
+                                <div class="dm-messages" id="dmMessages">
+                                    <div class="empty-state"><div class="empty-state-text">Select a conversation to start chatting.</div></div>
+                                </div>
+                                <div class="dm-input-area">
+                                    <input type="text" id="dmInput" class="dm-input" placeholder="Type a message..." onkeydown="if(event.key==='Enter')sendDm()">
+                                    <button class="send-btn" onclick="sendDm()">Send</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div class="comment-text">${escapeHtml(c.text)}</div>
@@ -6902,6 +7228,7 @@ function loadAchievements(stats) {
             if (!active) return false;
             const id = active.id || '';
             if (id === 'commentInput' || id === 'communityInput') return true;
+            if (id === 'dmInput' || id === 'dmSearchInput') return true;
             if (id.startsWith('reply-input-')) return true;
             return active.closest && active.closest('.reply-input-area');
         }
@@ -7018,6 +7345,9 @@ function loadAchievements(stats) {
             const isOpen = openReplyKey === key;
             openReplyKey = isOpen ? null : key;
             replyActiveKey = openReplyKey;
+            if (type === 'comment') {
+                commentVerseLocked = true;
+            }
             document.querySelectorAll('.reply-input-area').forEach(el => {
                 el.style.display = 'none';
             });
@@ -7092,6 +7422,7 @@ function loadAchievements(stats) {
             const communityInput = document.getElementById('communityInput');
             const communitySend = document.getElementById('communitySendBtn');
             const communityArea = document.getElementById('communityInputArea');
+            const dmInput = document.getElementById('dmInput');
 
             const restricted = !!commentRestriction.restricted;
             const reason = (commentRestriction.reason || 'policy').trim();
@@ -7115,6 +7446,7 @@ function loadAchievements(stats) {
             if (communityInput) communityInput.disabled = restricted;
             if (communitySend) communitySend.disabled = restricted;
             if (communityArea) communityArea.classList.toggle('is-disabled', restricted);
+            if (dmInput) dmInput.disabled = restricted;
 
             document.querySelectorAll('.reply-btn').forEach(btn => { btn.disabled = restricted; });
             document.querySelectorAll('.reply-input-area .comment-input').forEach(inp => { inp.disabled = restricted; });
@@ -7122,19 +7454,32 @@ function loadAchievements(stats) {
         }
 
         function switchCommentsView(view) {
-            currentCommentsView = view === 'community' ? 'community' : 'verse';
+            currentCommentsView = view === 'community' ? 'community' : (view === 'dm' ? 'dm' : 'verse');
             openReplyKey = null;
             replyActiveKey = null;
             const verseSection = document.getElementById('verseCommentsSection');
             const communitySection = document.getElementById('communityCommentsSection');
+            const dmSection = document.getElementById('dmCommentsSection');
             const verseBtn = document.getElementById('commentsViewVerseBtn');
             const communityBtn = document.getElementById('commentsViewCommunityBtn');
+            const dmBtn = document.getElementById('commentsViewDmBtn');
             if (verseSection) verseSection.style.display = currentCommentsView === 'verse' ? 'block' : 'none';
             if (communitySection) communitySection.style.display = currentCommentsView === 'community' ? 'block' : 'none';
+            if (dmSection) dmSection.style.display = currentCommentsView === 'dm' ? 'block' : 'none';
             if (verseBtn) verseBtn.classList.toggle('active', currentCommentsView === 'verse');
             if (communityBtn) communityBtn.classList.toggle('active', currentCommentsView === 'community');
-            if (currentCommentsView === 'community') loadCommunityMessages();
-            else loadComments();
+            if (dmBtn) dmBtn.classList.toggle('active', currentCommentsView === 'dm');
+            if (currentCommentsView === 'community') {
+                loadCommunityMessages();
+            } else if (currentCommentsView === 'dm') {
+                loadDmThreads(true);
+                loadDmMessages(true);
+            } else {
+                if (!activeCommentVerseId && currentVerse) {
+                    setActiveCommentVerse(currentVerse);
+                }
+                loadComments();
+            }
             applyRestrictionState();
         }
 
@@ -7395,7 +7740,10 @@ function loadAchievements(stats) {
                 if (currentTab !== 'comments') return;
                 if (!isCommentsInputActive()) {
                     if (currentCommentsView === 'community') loadCommunityMessages();
-                    else loadComments();
+                    else if (currentCommentsView === 'dm') {
+                        loadDmThreads();
+                        loadDmMessages();
+                    } else loadComments();
                 }
                 updateOnlineUsers();
             }, 3000);

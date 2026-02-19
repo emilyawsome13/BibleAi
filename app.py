@@ -954,7 +954,7 @@ def get_reaction_counts(c, db_type, item_type, item_id):
 
 def get_replies_for_parent(c, db_type, parent_type, parent_id):
     if db_type == 'postgres':
-            c.execute("""
+        c.execute("""
             SELECT
                 r.id, r.user_id, r.text, r.timestamp, r.google_name, r.google_picture,
                 u.name AS db_name, COALESCE(u.custom_picture, u.picture) AS db_picture, u.role AS db_role
@@ -963,8 +963,8 @@ def get_replies_for_parent(c, db_type, parent_type, parent_id):
             WHERE r.parent_type = %s AND r.parent_id = %s AND COALESCE(r.is_deleted, 0) = 0
             ORDER BY r.timestamp ASC
         """, (parent_type, parent_id))
-        else:
-            c.execute("""
+    else:
+        c.execute("""
             SELECT
                 r.id, r.user_id, r.text, r.timestamp, r.google_name, r.google_picture,
                 u.name AS db_name, COALESCE(u.custom_picture, u.picture) AS db_picture, u.role AS db_role

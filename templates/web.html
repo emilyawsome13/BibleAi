@@ -2067,6 +2067,7 @@
             align-items: center;
             justify-content: center;
             overflow: visible;
+            flex: 0 0 auto;
         }
         .avatar-wrap img {
             display: block;
@@ -2077,7 +2078,9 @@
         }
         .avatar-wrap .avatar-decor {
             position: absolute;
-            inset: -12%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
             width: 124%;
             height: 124%;
             object-fit: contain;
@@ -2086,7 +2089,6 @@
             z-index: 2;
         }
         .avatar-wrap.avatar-large .avatar-decor {
-            inset: -18%;
             width: 136%;
             height: 136%;
         }
@@ -3484,16 +3486,20 @@
         .online-avatars {
             display: flex;
         }
+        .online-avatar-wrap {
+            width: 32px;
+            height: 32px;
+            margin-left: -8px;
+        }
+        .online-avatar-wrap:first-child {
+            margin-left: 0;
+        }
         .online-avatar {
             width: 32px;
             height: 32px;
             border-radius: 50%;
             border: 2px solid var(--bg);
-            margin-left: -8px;
             object-fit: cover;
-        }
-        .online-avatar:first-child {
-            margin-left: 0;
         }
         .online-count {
             font-size: 13px;
@@ -3931,7 +3937,10 @@
                 <!-- Online Users -->
                 <div class="online-users">
                     <div class="online-avatars" id="onlineAvatars">
-                        <img src="{{ user.picture }}" class="online-avatar" title="You">
+                        <span class="avatar-wrap online-avatar-wrap" id="onlineAvatarWrap">
+                            <img id="onlineAvatarImg" src="{{ user.picture }}" class="online-avatar" title="You" onerror="this.src='https://ui-avatars.com/api/?name={{ user.name }}&background=random'">
+                            <img id="onlineAvatarDecor" class="avatar-decor hidden" alt="">
+                        </span>
                     </div>
                     <div class="online-dot"></div>
                     <div class="online-count"><span id="onlineCount">1</span> online</div>
@@ -4694,6 +4703,7 @@
         let aboutTouchMoved = false;
         let dmSelectedUserId = null;
         let dmSelectedUserName = '';
+        let dmSelectedUserDecor = '';
         let dmThreadsSignature = '';
         let dmMessagesSignature = '';
         let dmTypingCooldown = null;
@@ -6037,7 +6047,14 @@
         // ===== Direct Messages =====
         function buildDmThreadsSignature(threads) {
             if (!Array.isArray(threads)) return '';
-            return threads.map(t => `${t.user_id}:${(t.last_message || '').length}:${t.last_at || ''}:${t.unread || 0}`).join('|');
+            return threads.map(t => [
+                t.user_id,
+                (t.last_message || '').length,
+                t.last_at || '',
+                t.unread || 0,
+                t.picture || '',
+                t.avatar_decoration || ''
+            ].join(':')).join('|');
         }
 
         function buildDmMessagesSignature(messages) {
@@ -6061,9 +6078,10 @@
             list.innerHTML = threads.map(t => {
                 const active = dmSelectedUserId === t.user_id ? 'active' : '';
                 const unread = t.unread ? ` • ${t.unread} new` : '';
+                const avatarHtml = renderAvatarMarkup(t.picture || '', t.name || 'User', t.avatar_decoration || '', 'dm-thread-avatar');
                 return `
                     <div class="dm-thread ${active}" onclick="openDmThread(${t.user_id})">
-                        <img class="dm-thread-avatar" src="${t.picture || ''}" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(t.name || 'User')}&background=random'">
+                        ${avatarHtml}
                         <div>
                             <div class="dm-thread-name">${escapeHtml(t.name || 'User')}</div>
                             <div class="dm-thread-last">${escapeHtml(t.last_message || 'No messages yet')}</div>
@@ -6084,15 +6102,18 @@
                     suggested.innerHTML = '';
                     return;
                 }
-                suggested.innerHTML = data.map(u => `
-                    <div class="dm-thread" onclick="openDmThread(${u.id})">
-                        <img class="dm-thread-avatar" src="${u.picture || ''}" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(u.name || 'User')}&background=random'">
+                suggested.innerHTML = data.map(u => {
+                    const avatarHtml = renderAvatarMarkup(u.picture || '', u.name || 'User', u.avatar_decoration || '', 'dm-thread-avatar');
+                    return `
+                    <div class="dm-thread" onclick="openDmThread(${u.id}, ${JSON.stringify(u.name || 'User')}, ${JSON.stringify(u.picture || '')}, ${JSON.stringify(u.avatar_decoration || '')})">
+                        ${avatarHtml}
                         <div>
                             <div class="dm-thread-name">${escapeHtml(u.name || 'User')}</div>
                             <div class="dm-thread-last">Suggested • ${escapeHtml(u.role || 'user')}</div>
                         </div>
                     </div>
-                `).join('');
+                    `;
+                }).join('');
             } catch (_) {
                 suggested.innerHTML = '';
             }
@@ -6129,6 +6150,7 @@
                         user_id: dmSelectedUserId,
                         name: dmSelectedUserName || `User #${dmSelectedUserId}`,
                         picture: '',
+                        avatar_decoration: dmSelectedUserDecor || '',
                         last_message: 'Start a conversation',
                         unread: 0
                     };
@@ -6156,18 +6178,20 @@
             } catch (_) {}
         }
 
-        function openDmThread(userId, userName = '', userPicture = '') {
+        function openDmThread(userId, userName = '', userPicture = '', userDecor = '') {
             if (!userId) return;
             if (currentTab !== 'comments') switchTab('comments');
             if (currentCommentsView !== 'dm') switchCommentsView('dm');
             dmSelectedUserId = userId;
             if (userName) dmSelectedUserName = userName;
+            if (userDecor) dmSelectedUserDecor = userDecor;
             dmMessagesSignature = '';
             if (!dmThreadsCache[userId]) {
                 dmThreadsCache[userId] = {
                     user_id: userId,
                     name: userName || dmSelectedUserName || `User #${userId}`,
                     picture: userPicture || '',
+                    avatar_decoration: userDecor || '',
                     last_message: 'Start a conversation',
                     unread: 0
                 };
@@ -6287,9 +6311,10 @@
                 if (u.role) meta.push(u.role);
                 meta.push(`ID:${u.id}`);
                 if (u.email) meta.push(u.email);
+                const avatarHtml = renderAvatarMarkup(u.picture || '', u.name || 'User', u.avatar_decoration || '', 'dm-thread-avatar');
                 return `
-                <div class="dm-thread" onclick="openDmThread(${u.id})">
-                    <img class="dm-thread-avatar" src="${u.picture || ''}" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(u.name || 'User')}&background=random'">
+                <div class="dm-thread" onclick="openDmThread(${u.id}, ${JSON.stringify(u.name || 'User')}, ${JSON.stringify(u.picture || '')}, ${JSON.stringify(u.avatar_decoration || '')})">
+                    ${avatarHtml}
                     <div>
                         <div class="dm-thread-name">${escapeHtml(u.name || 'User')}</div>
                         <div class="dm-thread-last">${escapeHtml(meta.join(' • '))}</div>
@@ -6299,11 +6324,11 @@
             }).join('');
         }
 
-        function openDmFromComment(userId, userName = '', userPicture = '') {
+        function openDmFromComment(userId, userName = '', userPicture = '', userDecor = '') {
             if (!userId) return;
             switchTab('comments');
             switchCommentsView('dm');
-            openDmThread(userId, userName, userPicture);
+            openDmThread(userId, userName, userPicture, userDecor);
         }
 
         function formatLocalTimestamp(ts, options) {
@@ -6327,13 +6352,15 @@
             if (!Array.isArray(items)) return '';
             return items.map(c => {
                 const replies = Array.isArray(c.replies) ? c.replies : [];
-                const replyIds = replies.map(r => r.id).join(',');
+                const replyIds = replies.map(r => `${r.id}:${r.avatar_decoration || ''}:${r.user_picture || ''}`).join(',');
                 return [
                     c.id,
                     (c.text || '').length,
                     c.reply_count || replies.length || 0,
                     buildReactionsSignature(c.reactions),
-                    replyIds
+                    replyIds,
+                    c.user_picture || '',
+                    c.avatar_decoration || ''
                 ].join('|');
             }).join('||');
         }
@@ -6382,6 +6409,7 @@
             const replyOpen = openReplyKey === replyKey;
             const replyDraft = replyDrafts[replyKey] || '';
             const canDm = c.user_id && !isOwner;
+            const avatarHtml = renderAvatarMarkup(c.user_picture, c.user_name, c.avatar_decoration, 'comment-avatar');
             
             return `
                 <div class="comment-item" id="${type}-${c.id}">
@@ -6389,11 +6417,9 @@
                     <div class="comment-header">
                         ${c.user_id ? `
                             <a class="comment-user-link" href="/u/${c.user_id}">
-                                <img src="${c.user_picture}" class="comment-avatar" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(c.user_name)}&background=random'">
+                                ${avatarHtml}
                             </a>
-                        ` : `
-                            <img src="${c.user_picture}" class="comment-avatar" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(c.user_name)}&background=random'">
-                        `}
+                        ` : avatarHtml}
                         <div class="comment-meta">
                             <div class="comment-name-row">
                                 ${c.user_id ? `
@@ -6413,7 +6439,7 @@
                         <button class="reaction-btn" onclick="addReaction(${c.id}, '${type}', 'pray', this)">🙏 ${reactions['pray'] || 0}</button>
                         <button class="reaction-btn" onclick="addReaction(${c.id}, '${type}', 'cross', this)">✝️ ${reactions['cross'] || 0}</button>
                         <button class="reply-btn" ${replyDisabled} onclick="showReplyBox(${c.id}, '${type}')">Reply (${c.reply_count || replies.length || 0})</button>
-                        ${canDm ? `<button class="reply-btn" onclick="openDmFromComment(${c.user_id}, ${JSON.stringify(c.user_name || 'User')}, ${JSON.stringify(c.user_picture || '')})">DM</button>` : ''}
+                        ${canDm ? `<button class="reply-btn" onclick="openDmFromComment(${c.user_id}, ${JSON.stringify(c.user_name || 'User')}, ${JSON.stringify(c.user_picture || '')}, ${JSON.stringify(c.avatar_decoration || '')})">DM</button>` : ''}
                     </div>
                     <div class="comment-replies" id="replies-${type}-${c.id}">${renderReplies(replies)}</div>
                     <div class="reply-input-area" id="reply-box-${type}-${c.id}" style="display: ${replyOpen ? 'flex' : 'none'};">
@@ -6429,16 +6455,15 @@
             return replies.map(r => {
                 const role = String(r.user_role || 'user').toLowerCase();
                 const roleDisplay = role.replace('_', ' ');
+                const avatarHtml = renderAvatarMarkup(r.user_picture || '', r.user_name || 'User', r.avatar_decoration || '', 'comment-avatar');
                 return `
                     <div class="comment-item" style="margin-left: 26px; margin-top: 8px; border-left: 2px solid rgba(255,255,255,0.12);">
                         <div class="comment-header">
                             ${r.user_id ? `
                                 <a class="comment-user-link" href="/u/${r.user_id}">
-                                    <img src="${r.user_picture || ''}" class="comment-avatar" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(r.user_name || 'User')}&background=random'">
+                                    ${avatarHtml}
                                 </a>
-                            ` : `
-                                <img src="${r.user_picture || ''}" class="comment-avatar" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(r.user_name || 'User')}&background=random'">
-                            `}
+                            ` : avatarHtml}
                             <div class="comment-meta">
                                 <div class="comment-name-row">
                                     ${r.user_id ? `
@@ -6486,6 +6511,19 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        function renderAvatarMarkup(url, name, decor, imgClass) {
+            const safeName = name || 'User';
+            const fallback = `https://ui-avatars.com/api/?name=${encodeURIComponent(safeName)}&background=random`;
+            const avatarUrl = url || '';
+            const decorImg = decor ? `<img class="avatar-decor" src="${decor}" alt="">` : '';
+            return `
+                <span class="avatar-wrap">
+                    <img src="${avatarUrl}" class="${imgClass}" onerror="this.src='${fallback}'">
+                    ${decorImg}
+                </span>
+            `;
         }
 
         // Profile Stats
@@ -6569,8 +6607,14 @@
             
             const memberEl = document.getElementById('memberSince');
             if (memberEl) {
-                const date = parseCreatedAt(userData.created_at || fallbackCreated);
-                memberEl.textContent = date ? date.toLocaleDateString() : '—';
+                const rawCreated = userData.created_at || fallbackCreated || '';
+                const date = parseCreatedAt(rawCreated);
+                if (date) {
+                    memberEl.textContent = date.toLocaleDateString();
+                } else {
+                    const match = String(rawCreated).match(/\d{4}-\d{2}-\d{2}/);
+                    memberEl.textContent = match ? match[0] : '—';
+                }
             }
 
             const roleTag = document.getElementById('roleTag');
@@ -6598,7 +6642,15 @@
             { name: 'Radiant', url: '/static/images/decorations/radiant.svg' },
             { name: 'Laurel', url: '/static/images/decorations/laurel.svg' },
             { name: 'Crown', url: '/static/images/decorations/crown.svg' },
-            { name: 'Sparkle', url: '/static/images/decorations/sparkle.svg' }
+            { name: 'Sparkle', url: '/static/images/decorations/sparkle.svg' },
+            { name: 'Sunburst', url: '/static/images/decorations/sunburst.svg' },
+            { name: 'Wings', url: '/static/images/decorations/wings.svg' },
+            { name: 'Flame', url: '/static/images/decorations/flame.svg' },
+            { name: 'Electric', url: '/static/images/decorations/electric.svg' },
+            { name: 'Ice', url: '/static/images/decorations/ice.svg' },
+            { name: 'Rose', url: '/static/images/decorations/rose.svg' },
+            { name: 'Shield', url: '/static/images/decorations/shield.svg' },
+            { name: 'Orbit', url: '/static/images/decorations/orbit.svg' }
         ];
 
         function updateHeaderAvatar(url) {
@@ -6610,7 +6662,8 @@
             currentAvatarDecoration = url || '';
             const headerDecor = document.getElementById('headerAvatarDecor');
             const profileDecor = document.getElementById('profileAvatarDecor');
-            [headerDecor, profileDecor].forEach(el => {
+            const onlineDecor = document.getElementById('onlineAvatarDecor');
+            [headerDecor, profileDecor, onlineDecor].forEach(el => {
                 if (!el) return;
                 if (!currentAvatarDecoration) {
                     el.classList.add('hidden');

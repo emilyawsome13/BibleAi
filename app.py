@@ -255,6 +255,19 @@ def get_cursor(conn, db_type):
     else:
         return conn.cursor()
 
+def row_value(row, key, default=None):
+    """Safely read a key from dict-like or sqlite3.Row results."""
+    try:
+        if isinstance(row, dict):
+            return row.get(key, default)
+        if hasattr(row, 'keys'):
+            keys = row.keys()
+            if key in keys:
+                return row[key]
+    except Exception:
+        pass
+    return default
+
 def _redact_db_url(url):
     try:
         from urllib.parse import urlparse
@@ -957,7 +970,8 @@ def get_replies_for_parent(c, db_type, parent_type, parent_id):
         c.execute("""
             SELECT
                 r.id, r.user_id, r.text, r.timestamp, r.google_name, r.google_picture,
-                u.name AS db_name, COALESCE(u.custom_picture, u.picture) AS db_picture, u.role AS db_role
+                u.name AS db_name, COALESCE(u.custom_picture, u.picture) AS db_picture, u.role AS db_role,
+                u.avatar_decoration AS db_decor
             FROM comment_replies r
             LEFT JOIN users u ON r.user_id = u.id
             WHERE r.parent_type = %s AND r.parent_id = %s AND COALESCE(r.is_deleted, 0) = 0
@@ -967,7 +981,8 @@ def get_replies_for_parent(c, db_type, parent_type, parent_id):
         c.execute("""
             SELECT
                 r.id, r.user_id, r.text, r.timestamp, r.google_name, r.google_picture,
-                u.name AS db_name, COALESCE(u.custom_picture, u.picture) AS db_picture, u.role AS db_role
+                u.name AS db_name, COALESCE(u.custom_picture, u.picture) AS db_picture, u.role AS db_role,
+                u.avatar_decoration AS db_decor
             FROM comment_replies r
             LEFT JOIN users u ON r.user_id = u.id
             WHERE r.parent_type = ? AND r.parent_id = ? AND COALESCE(r.is_deleted, 0) = 0
@@ -986,6 +1001,7 @@ def get_replies_for_parent(c, db_type, parent_type, parent_id):
             db_name = row['db_name']
             db_picture = row['db_picture']
             db_role = row['db_role']
+            db_decor = row['db_decor']
         except Exception:
             reply_id = row[0]
             user_id = row[1]
@@ -996,6 +1012,7 @@ def get_replies_for_parent(c, db_type, parent_type, parent_id):
             db_name = row[6] if len(row) > 6 else None
             db_picture = row[7] if len(row) > 7 else None
             db_role = row[8] if len(row) > 8 else None
+            db_decor = row[9] if len(row) > 9 else None
         replies.append({
             "id": reply_id,
             "user_id": user_id,
@@ -1003,7 +1020,8 @@ def get_replies_for_parent(c, db_type, parent_type, parent_id):
             "timestamp": timestamp,
             "user_name": db_name or google_name or "Anonymous",
             "user_picture": db_picture or google_picture or "",
-            "user_role": normalize_role(db_role or "user")
+            "user_role": normalize_role(db_role or "user"),
+            "avatar_decoration": db_decor or ""
         })
     return replies
 
@@ -2533,10 +2551,10 @@ def get_user_info():
                 is_banned_val = bool(row['is_banned'])
                 role_val = row['role'] or 'user'
                 name_val = row['name'] or session.get('user_name')
-                email_val = row.get('email') or session.get('user_email')
-                base_picture = row.get('picture')
-                custom_picture = row.get('custom_picture')
-                avatar_decoration = row.get('avatar_decoration')
+                email_val = row_value(row, 'email', session.get('user_email')) or session.get('user_email')
+                base_picture = row_value(row, 'picture')
+                custom_picture = row_value(row, 'custom_picture')
+                avatar_decoration = row_value(row, 'avatar_decoration')
             else:
                 created_at_val = row[0]
                 is_admin_val = bool(row[1])
@@ -3601,7 +3619,7 @@ def public_profile(user_id):
             picture = row['picture'] or ''
             role = normalize_role(row['role'] or 'user')
             created_at = row['created_at'] or ''
-            avatar_decoration = row.get('avatar_decoration')
+            avatar_decoration = row_value(row, 'avatar_decoration')
             uid = row['id']
         else:
             uid = row[0]
@@ -3907,23 +3925,26 @@ def get_comments(verse_id):
             user_name = google_name or "Anonymous"
             user_picture = ""
             user_role = "user"
+            user_decor = ""
             
             if user_id:
                 try:
                     if db_type == 'postgres':
-                        c.execute("SELECT name, COALESCE(custom_picture, picture) AS picture, role FROM users WHERE id = %s", (user_id,))
+                        c.execute("SELECT name, COALESCE(custom_picture, picture) AS picture, role, avatar_decoration FROM users WHERE id = %s", (user_id,))
                     else:
-                        c.execute("SELECT name, COALESCE(custom_picture, picture) AS picture, role FROM users WHERE id = ?", (user_id,))
+                        c.execute("SELECT name, COALESCE(custom_picture, picture) AS picture, role, avatar_decoration FROM users WHERE id = ?", (user_id,))
                     user_row = c.fetchone()
                     if user_row:
                         try:
                             user_name = user_row['name'] or google_name or "Anonymous"
                             user_picture = user_row['picture'] or ""
                             user_role = normalize_role(user_row['role'] or "user")
+                            user_decor = row_value(user_row, 'avatar_decoration') or ""
                         except (TypeError, KeyError):
                             user_name = user_row[0] or google_name or "Anonymous"
                             user_picture = user_row[1] or ""
                             user_role = normalize_role(user_row[2] if len(user_row) > 2 and user_row[2] else "user")
+                            user_decor = user_row[3] if len(user_row) > 3 else ""
                 except Exception as user_err:
                     logger.error(f"Error getting user info: {user_err}")
             
@@ -3934,6 +3955,7 @@ def get_comments(verse_id):
                 "timestamp": timestamp,
                 "user_name": user_name,
                 "user_picture": user_picture,
+                "avatar_decoration": user_decor or "",
                 "user_id": user_id,
                 "user_role": user_role,
                 "reactions": get_reaction_counts(c, db_type, "comment", comment_id),
@@ -4125,7 +4147,7 @@ def get_community_messages():
             c.execute("""
                 SELECT
                     cm.id, cm.user_id, cm.text, cm.timestamp, cm.google_name, cm.google_picture,
-                    u.name, COALESCE(u.custom_picture, u.picture) AS picture, u.role
+                    u.name, COALESCE(u.custom_picture, u.picture) AS picture, u.role, u.avatar_decoration
                 FROM community_messages cm
                 LEFT JOIN users u ON cm.user_id = u.id
                 ORDER BY timestamp DESC
@@ -4135,7 +4157,7 @@ def get_community_messages():
             c.execute("""
                 SELECT
                     cm.id, cm.user_id, cm.text, cm.timestamp, cm.google_name, cm.google_picture,
-                    u.name, COALESCE(u.custom_picture, u.picture) AS picture, u.role
+                    u.name, COALESCE(u.custom_picture, u.picture) AS picture, u.role, u.avatar_decoration
                 FROM community_messages cm
                 LEFT JOIN users u ON cm.user_id = u.id
                 ORDER BY timestamp DESC
@@ -4156,6 +4178,7 @@ def get_community_messages():
                 db_name = row['name']
                 db_picture = row['picture']
                 db_role = row['role']
+                db_decor = row_value(row, 'avatar_decoration') or ""
             except (TypeError, KeyError):
                 msg_id = row[0]
                 user_id = row[1]
@@ -4166,6 +4189,7 @@ def get_community_messages():
                 db_name = row[6] if len(row) > 6 else None
                 db_picture = row[7] if len(row) > 7 else None
                 db_role = row[8] if len(row) > 8 else None
+                db_decor = row[9] if len(row) > 9 else None
             
             user_name = db_name or google_name or "Anonymous"
             user_picture = db_picture or google_picture or ""
@@ -4177,6 +4201,7 @@ def get_community_messages():
                 "timestamp": timestamp,
                 "user_name": user_name,
                 "user_picture": user_picture,
+                "avatar_decoration": db_decor or "",
                 "user_id": user_id,
                 "user_role": db_role or "user",
                 "reactions": get_reaction_counts(c, db_type, "community", msg_id),
@@ -4262,7 +4287,7 @@ def search_users():
         token = f"%{q}%"
         if db_type == 'postgres':
             c.execute("""
-                SELECT id, name, email, COALESCE(custom_picture, picture) AS picture, role
+                SELECT id, name, email, COALESCE(custom_picture, picture) AS picture, role, avatar_decoration
                 FROM users
                 WHERE id <> %s AND (
                     COALESCE(name,'') ILIKE %s
@@ -4274,7 +4299,7 @@ def search_users():
             """, (session['user_id'], token, token, token))
         else:
             c.execute("""
-                SELECT id, name, email, COALESCE(custom_picture, picture) AS picture, role
+                SELECT id, name, email, COALESCE(custom_picture, picture) AS picture, role, avatar_decoration
                 FROM users
                 WHERE id <> ? AND (
                     LOWER(COALESCE(name,'')) LIKE LOWER(?)
@@ -4291,9 +4316,10 @@ def search_users():
                 results.append({
                     "id": row['id'],
                     "name": row['name'] or "User",
-                    "email": row.get('email') or "",
+                    "email": row_value(row, 'email') or "",
                     "picture": row['picture'] or "",
-                    "role": normalize_role(row['role'] or 'user')
+                    "role": normalize_role(row['role'] or 'user'),
+                    "avatar_decoration": row_value(row, 'avatar_decoration') or ""
                 })
             except Exception:
                 results.append({
@@ -4301,7 +4327,8 @@ def search_users():
                     "name": row[1] or "User",
                     "email": row[2] or "",
                     "picture": row[3] or "",
-                    "role": normalize_role(row[4] if len(row) > 4 else 'user')
+                    "role": normalize_role(row[4] if len(row) > 4 else 'user'),
+                    "avatar_decoration": row[5] if len(row) > 5 else ""
                 })
         return jsonify(results)
     except Exception as e:
@@ -4320,7 +4347,7 @@ def recent_users():
         uid = session['user_id']
         if db_type == 'postgres':
             c.execute(f"""
-                SELECT u.id, u.name, COALESCE(u.custom_picture, u.picture) AS picture, u.role
+                SELECT u.id, u.name, COALESCE(u.custom_picture, u.picture) AS picture, u.role, u.avatar_decoration
                 FROM users u
                 WHERE u.id <> %s AND u.id IN (
                     SELECT user_id FROM comments ORDER BY timestamp DESC LIMIT {limit * 5}
@@ -4332,7 +4359,7 @@ def recent_users():
             """, (uid,))
         else:
             c.execute(f"""
-                SELECT u.id, u.name, COALESCE(u.custom_picture, u.picture) AS picture, u.role
+                SELECT u.id, u.name, COALESCE(u.custom_picture, u.picture) AS picture, u.role, u.avatar_decoration
                 FROM users u
                 WHERE u.id <> ? AND u.id IN (
                     SELECT user_id FROM comments ORDER BY timestamp DESC LIMIT {limit * 5}
@@ -4350,14 +4377,16 @@ def recent_users():
                     "id": row['id'],
                     "name": row['name'] or "User",
                     "picture": row['picture'] or "",
-                    "role": normalize_role(row['role'] or 'user')
+                    "role": normalize_role(row['role'] or 'user'),
+                    "avatar_decoration": row_value(row, 'avatar_decoration') or ""
                 })
             except Exception:
                 results.append({
                     "id": row[0],
                     "name": row[1] or "User",
                     "picture": row[2] or "",
-                    "role": normalize_role(row[3] if len(row) > 3 else 'user')
+                    "role": normalize_role(row[3] if len(row) > 3 else 'user'),
+                    "avatar_decoration": row[4] if len(row) > 4 else ""
                 })
         return jsonify(results)
     except Exception as e:
@@ -4397,21 +4426,23 @@ def dm_threads():
                 continue
             # user info
             if db_type == 'postgres':
-                c.execute("SELECT name, COALESCE(custom_picture, picture) AS picture, role FROM users WHERE id = %s", (other_id,))
+                c.execute("SELECT name, COALESCE(custom_picture, picture) AS picture, role, avatar_decoration FROM users WHERE id = %s", (other_id,))
             else:
-                c.execute("SELECT name, COALESCE(custom_picture, picture) AS picture, role FROM users WHERE id = ?", (other_id,))
+                c.execute("SELECT name, COALESCE(custom_picture, picture) AS picture, role, avatar_decoration FROM users WHERE id = ?", (other_id,))
             urow = c.fetchone()
             if urow:
                 try:
                     name = urow['name'] or 'User'
                     picture = urow['picture'] or ''
                     role = normalize_role(urow['role'] or 'user')
+                    decor = row_value(urow, 'avatar_decoration') or ''
                 except Exception:
                     name = urow[0] or 'User'
                     picture = urow[1] or ''
                     role = normalize_role(urow[2] if len(urow) > 2 else 'user')
+                    decor = urow[3] if len(urow) > 3 else ''
             else:
-                name, picture, role = 'User', '', 'user'
+                name, picture, role, decor = 'User', '', 'user', ''
             # last message
             if db_type == 'postgres':
                 c.execute("""
@@ -4455,6 +4486,7 @@ def dm_threads():
                 "name": name,
                 "picture": picture,
                 "role": role,
+                "avatar_decoration": decor,
                 "last_message": last_msg,
                 "last_at": last_at,
                 "last_sender": last_sender,

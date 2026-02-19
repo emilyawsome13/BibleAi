@@ -3266,6 +3266,14 @@ def db_status():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/db-status')
+def db_status_page():
+    if 'user_id' not in session:
+        return redirect('/login')
+    if not session.get('is_admin'):
+        return redirect('/')
+    return render_template('db_status.html')
+
 def _request_location_snapshot():
     forwarded_for = request.headers.get('X-Forwarded-For', '')
     ip = (forwarded_for.split(',')[0].strip() if forwarded_for else '') or request.headers.get('X-Real-IP') or request.remote_addr or 'unknown'

@@ -1775,6 +1775,13 @@ def index():
                 "role": user[7] if len(user) > 7 else 'user'
             }
         
+        created_at_val = user_dict.get("created_at")
+        if isinstance(created_at_val, datetime):
+            created_at_val = created_at_val.isoformat()
+        if not created_at_val or str(created_at_val).strip().lower() in ('none', 'null', 'undefined'):
+            created_at_val = ''
+        user_dict["created_at"] = created_at_val
+        
         return render_template('web.html', 
                              user=user_dict,
                              stats={"total_verses": total_verses, "liked": liked_count, "saved": saved_count})
@@ -2540,6 +2547,9 @@ def get_user_info():
                 base_picture = row[6] if len(row) > 6 else None
                 custom_picture = row[7] if len(row) > 7 else None
                 avatar_decoration = row[8] if len(row) > 8 else None
+
+            parsed_created = parse_dt(created_at_val)
+            created_at_val = parsed_created.isoformat() if parsed_created else None
 
             if not created_at_val:
                 earliest = find_earliest_activity()
@@ -4254,18 +4264,26 @@ def search_users():
             c.execute("""
                 SELECT id, name, email, COALESCE(custom_picture, picture) AS picture, role
                 FROM users
-                WHERE id <> %s AND (COALESCE(name,'') ILIKE %s OR COALESCE(email,'') ILIKE %s)
+                WHERE id <> %s AND (
+                    COALESCE(name,'') ILIKE %s
+                    OR COALESCE(email,'') ILIKE %s
+                    OR CAST(id AS TEXT) ILIKE %s
+                )
                 ORDER BY id DESC
                 LIMIT 10
-            """, (session['user_id'], token, token))
+            """, (session['user_id'], token, token, token))
         else:
             c.execute("""
                 SELECT id, name, email, COALESCE(custom_picture, picture) AS picture, role
                 FROM users
-                WHERE id <> ? AND (LOWER(COALESCE(name,'')) LIKE LOWER(?) OR LOWER(COALESCE(email,'')) LIKE LOWER(?))
+                WHERE id <> ? AND (
+                    LOWER(COALESCE(name,'')) LIKE LOWER(?)
+                    OR LOWER(COALESCE(email,'')) LIKE LOWER(?)
+                    OR CAST(id AS TEXT) LIKE ?
+                )
                 ORDER BY id DESC
                 LIMIT 10
-            """, (session['user_id'], token, token))
+            """, (session['user_id'], token, token, token))
         rows = c.fetchall()
         results = []
         for row in rows:
@@ -4273,6 +4291,7 @@ def search_users():
                 results.append({
                     "id": row['id'],
                     "name": row['name'] or "User",
+                    "email": row.get('email') or "",
                     "picture": row['picture'] or "",
                     "role": normalize_role(row['role'] or 'user')
                 })
@@ -4280,6 +4299,7 @@ def search_users():
                 results.append({
                     "id": row[0],
                     "name": row[1] or "User",
+                    "email": row[2] or "",
                     "picture": row[3] or "",
                     "role": normalize_role(row[4] if len(row) > 4 else 'user')
                 })

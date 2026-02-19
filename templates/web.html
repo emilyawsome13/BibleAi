@@ -2070,10 +2070,12 @@
         }
         .avatar-wrap img {
             display: block;
+        }
+        .avatar-wrap img:not(.avatar-decor) {
             position: relative;
             z-index: 1;
         }
-        .avatar-decor {
+        .avatar-wrap .avatar-decor {
             position: absolute;
             inset: -12%;
             width: 124%;
@@ -2100,6 +2102,10 @@
             height: 100%;
             border-radius: 50%;
             object-fit: cover;
+        }
+        .avatar-wrap.avatar-large {
+            width: 90px;
+            height: 90px;
         }
         .avatar-shop-grid {
             display: grid;
@@ -4003,7 +4009,7 @@
                         </div>
 
                         <div class="dm-search">
-                            <input type="text" id="dmSearchInput" class="dm-input" placeholder="Search by name or email...">
+                            <input type="text" id="dmSearchInput" class="dm-input" placeholder="Search by name, email, or ID...">
                             <button class="btn btn-primary" onclick="searchDmUsers()">Find</button>
                         </div>
                         <div class="dm-search-results" id="dmSearchResults" style="display:none;"></div>
@@ -4033,7 +4039,7 @@
             </div>
 
             <!-- PROFILE TAB -->
-            <div id="profile" class="tab-view" data-created-at="{{ user.created_at }}" data-user-name="{{ user.name }}" data-user-email="{{ user.email }}" data-user-picture="{{ user.picture }}" data-user-decor="{{ user.avatar_decoration }}">
+            <div id="profile" class="tab-view" data-created-at="{{ user.created_at or '' }}" data-user-name="{{ user.name }}" data-user-email="{{ user.email }}" data-user-picture="{{ user.picture }}" data-user-decor="{{ user.avatar_decoration or '' }}" data-user-id="{{ user.id }}">
                 <div class="glass-card" style="text-align: center; padding: 32px;">
                     <div class="avatar-wrap avatar-large" id="profileAvatarWrap" style="margin-bottom: 16px;">
                         <img id="profileAvatar" src="{{ user.picture }}" style="width: 90px; height: 90px; border-radius: 50%; border: 3px solid var(--primary); box-shadow: 0 8px 24px var(--primary-glow); object-fit: cover;">
@@ -4041,6 +4047,7 @@
                     </div>
                     <div id="profileUserName" style="font-size: 24px; font-weight: 700; margin-bottom: 4px;">{{ user.name }}</div>
                     <div id="profileEmail" style="font-size: 14px; opacity: 0.6;">{{ user.email }}</div>
+                    <div id="profileUserId" style="font-size: 12px; opacity: 0.5; margin-top: 4px;">ID: {{ user.id }}</div>
                     <div style="margin-top: 10px;">
                         <button class="btn btn-primary" onclick="switchTab('comments'); switchCommentsView('dm');">Open DMs</button>
                     </div>
@@ -6256,7 +6263,8 @@
         async function searchDmUsers() {
             const input = document.getElementById('dmSearchInput');
             const q = (input.value || '').trim();
-            if (q.length < 2) {
+            const isIdSearch = /^\d+$/.test(q);
+            if (q.length < 2 && !isIdSearch) {
                 showToast('Type at least 2 characters');
                 return;
             }
@@ -6274,15 +6282,21 @@
                 return;
             }
             results.style.display = 'block';
-            results.innerHTML = data.map(u => `
+            results.innerHTML = data.map(u => {
+                const meta = [];
+                if (u.role) meta.push(u.role);
+                meta.push(`ID:${u.id}`);
+                if (u.email) meta.push(u.email);
+                return `
                 <div class="dm-thread" onclick="openDmThread(${u.id})">
                     <img class="dm-thread-avatar" src="${u.picture || ''}" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(u.name || 'User')}&background=random'">
                     <div>
                         <div class="dm-thread-name">${escapeHtml(u.name || 'User')}</div>
-                        <div class="dm-thread-last">${escapeHtml(u.role || 'user')}</div>
+                        <div class="dm-thread-last">${escapeHtml(meta.join(' • '))}</div>
                     </div>
                 </div>
-            `).join('');
+                `;
+            }).join('');
         }
 
         function openDmFromComment(userId, userName = '', userPicture = '') {
@@ -6484,6 +6498,8 @@
             }
             const str = String(value).trim();
             if (!str) return null;
+            const lowered = str.toLowerCase();
+            if (lowered === 'none' || lowered === 'null' || lowered === 'undefined') return null;
             if (/^\d+$/.test(str)) {
                 const num = Number(str);
                 const ms = num > 1e12 ? num : num * 1000;
@@ -6530,6 +6546,7 @@
             const fallbackName = profileEl?.dataset?.userName || '';
             const fallbackEmail = profileEl?.dataset?.userEmail || '';
             const fallbackPicture = profileEl?.dataset?.userPicture || '';
+            const fallbackUserId = profileEl?.dataset?.userId || '';
             const effectiveName = userData.name || fallbackName || 'User';
             const effectiveEmail = userData.email || fallbackEmail || '';
             const effectivePicture = userData.picture || fallbackPicture || '';
@@ -6544,6 +6561,11 @@
             updateHeaderAvatar(effectivePicture);
             applyAvatarDecoration(effectiveDecor);
             renderAvatarDecorations();
+            const idEl = document.getElementById('profileUserId');
+            if (idEl) {
+                const idVal = userData.id || fallbackUserId;
+                idEl.textContent = idVal ? `ID: ${idVal}` : 'ID: —';
+            }
             
             const memberEl = document.getElementById('memberSince');
             if (memberEl) {

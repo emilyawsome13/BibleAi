@@ -108,6 +108,7 @@
         {% else %}
             <div class="meta">Email hidden for privacy</div>
         {% endif %}
+        <div class="meta">User ID: {{ user.id }}</div>
         {% if user.created_at_display %}
             <div class="meta">Member since {{ user.created_at_display }}</div>
         {% endif %}

@@ -85,7 +85,10 @@ DATABASE_URL = (
 if DATABASE_URL and DATABASE_URL.startswith('postgres://'):
     DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
 
-IS_POSTGRES = DATABASE_URL and ('postgresql' in DATABASE_URL or 'postgres' in DATABASE_URL)
+DB_MODE = str(os.environ.get('DB_MODE', 'auto')).strip().lower()
+FORCE_SQLITE = DB_MODE in ('sqlite', 'local', 'file')
+FORCE_POSTGRES = DB_MODE in ('postgres', 'postgresql', 'pg')
+IS_POSTGRES = (not FORCE_SQLITE) and DATABASE_URL and ('postgresql' in DATABASE_URL or 'postgres' in DATABASE_URL)
 POSTGRES_AVAILABLE = True
 STRICT_DB = str(os.environ.get('STRICT_DB', '1')).strip().lower() in ('1', 'true', 'yes', 'on')
 RENDER_ENV = bool(os.environ.get('RENDER') or os.environ.get('RENDER_SERVICE_ID'))
@@ -177,6 +180,12 @@ def get_public_url():
 def get_db():
     """Get database connection - PostgreSQL for Render, SQLite for local"""
     global POSTGRES_AVAILABLE
+    if FORCE_SQLITE:
+        conn = sqlite3.connect(SQLITE_PATH, timeout=20)
+        conn.row_factory = sqlite3.Row
+        return conn, 'sqlite'
+    if FORCE_POSTGRES and not IS_POSTGRES:
+        raise RuntimeError("DB_MODE=postgres but DATABASE_URL is not set to a postgres URL")
     if IS_POSTGRES and POSTGRES_AVAILABLE:
         try:
             import psycopg2
@@ -212,6 +221,17 @@ def get_cursor(conn, db_type):
         return conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     else:
         return conn.cursor()
+
+def _redact_db_url(url):
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        host = parsed.hostname or ''
+        port = f":{parsed.port}" if parsed.port else ''
+        path = parsed.path or ''
+        return f"{parsed.scheme}://{host}{port}{path}"
+    except Exception:
+        return ''
 
 def read_system_setting(key, default=None):
     conn = None
@@ -3211,6 +3231,40 @@ def get_mood_recommendation(mood):
         return jsonify({"error": str(e)}), 500
     finally:
         conn.close()
+
+@app.route('/api/db_status')
+def db_status():
+    if 'user_id' not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    if not session.get('is_admin'):
+        return jsonify({"error": "Admin required"}), 403
+    try:
+        conn, db_type = get_db()
+        c = conn.cursor()
+        counts = {}
+        for table in [
+            'users', 'verses', 'likes', 'saves', 'comments', 'comment_replies',
+            'community_messages', 'audit_logs', 'daily_actions', 'notifications'
+        ]:
+            try:
+                c.execute(f"SELECT COUNT(*) FROM {table}")
+                row = c.fetchone()
+                counts[table] = row[0] if row else 0
+            except Exception:
+                counts[table] = None
+        info = {
+            "db_type": db_type,
+            "db_mode": DB_MODE,
+            "strict_db": STRICT_DB,
+            "render_env": RENDER_ENV,
+            "sqlite_path": SQLITE_PATH if db_type == 'sqlite' else None,
+            "database_url": _redact_db_url(DATABASE_URL) if db_type == 'postgres' else None,
+            "counts": counts
+        }
+        conn.close()
+        return jsonify(info)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 def _request_location_snapshot():
     forwarded_for = request.headers.get('X-Forwarded-For', '')

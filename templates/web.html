@@ -3687,7 +3687,7 @@
                         <div class="restriction-banner" id="commentRestrictionBanner"></div>
 
                         <div class="comment-input-area" id="commentInputArea">
-                            <textarea class="comment-input" id="commentInput" placeholder="Share your thoughts on this verse... Use @ to mention" rows="1" onkeydown="handleCommentKey(event)"></textarea>
+                            <textarea class="comment-input" id="commentInput" name="comment_text" autocomplete="off" data-form-type="other" placeholder="Share your thoughts on this verse... Use @ to mention" rows="1" onkeydown="handleCommentKey(event)"></textarea>
                             <button class="send-btn" id="commentSendBtn" onclick="postComment()">&#8593;</button>
                         </div>
 
@@ -3715,7 +3715,7 @@
                         <div class="restriction-banner" id="communityRestrictionBanner"></div>
 
                         <div class="comment-input-area" id="communityInputArea">
-                            <textarea class="comment-input" id="communityInput" placeholder="Share about life, ask for help, or offer guidance... #topic" rows="1" onkeydown="handleCommunityKey(event)"></textarea>
+                            <textarea class="comment-input" id="communityInput" name="community_text" autocomplete="off" data-form-type="other" placeholder="Share about life, ask for help, or offer guidance... #topic" rows="1" onkeydown="handleCommunityKey(event)"></textarea>
                             <button class="send-btn" id="communitySendBtn" onclick="postCommunityMessage()">&#8593;</button>
                         </div>
 
@@ -4228,7 +4228,7 @@
                 </div>
             </div>
             
-            <input type="password" class="admin-code-input" id="adminCodeInput" placeholder="Enter code for selected role..." maxlength="20">
+            <input type="password" class="admin-code-input" id="adminCodeInput" name="admin_code" autocomplete="one-time-code" data-form-type="other" placeholder="Enter code for selected role..." maxlength="20">
             
             <button class="unlock-btn" id="unlockBtn" onclick="verifyRoleCode()" disabled>Access Panel</button>
             
@@ -5646,7 +5646,7 @@
                     </div>
                     <div class="comment-replies" id="replies-${type}-${c.id}">${renderReplies(replies)}</div>
                     <div class="reply-input-area" id="reply-box-${type}-${c.id}" style="display: ${replyOpen ? 'flex' : 'none'};">
-                        <input type="text" class="comment-input" placeholder="Write a reply..." id="reply-input-${type}-${c.id}" ${replyDisabled} onkeydown="if(event.key==='Enter')postReply(${c.id}, '${type}')">
+                        <input type="text" class="comment-input" name="reply_text" autocomplete="off" data-form-type="other" placeholder="Write a reply..." id="reply-input-${type}-${c.id}" ${replyDisabled} onkeydown="if(event.key==='Enter')postReply(${c.id}, '${type}')">
                         <button class="send-btn" ${replyDisabled} onclick="postReply(${c.id}, '${type}')">Send</button>
                     </div>
                 </div>
@@ -6811,7 +6811,7 @@ function loadAchievements(stats) {
                     </div>
                     <div class="comment-replies" id="replies-${comment.id}"></div>
                     <div class="reply-input-area" id="reply-box-${comment.id}" style="display: none;">
-                        <input type="text" class="comment-input" placeholder="Write a reply..." id="reply-input-${comment.id}">
+                            <input type="text" class="comment-input" name="reply_text" autocomplete="off" data-form-type="other" placeholder="Write a reply..." id="reply-input-${comment.id}">
                         <button class="send-btn" onclick="postReply(${comment.id})">➤</button>
                     </div>
                 </div>

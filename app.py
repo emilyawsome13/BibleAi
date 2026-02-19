@@ -66,8 +66,8 @@ ADMIN_CODE = os.environ.get('ADMIN_CODE', 'God Is All')
 MASTER_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'God Is All')
 
 DATABASE_URL = (
-    os.environ.get('DATABASE_URL')
-    or os.environ.get('DATABASE_URL-9864bd776330b2743effe162f4cef50d')
+    os.environ.get('DATABASE_URL-9864bd776330b2743effe162f4cef50d')
+    or os.environ.get('DATABASE_URL')
     or 'sqlite:///bible_ios.db'
 )
 if DATABASE_URL and DATABASE_URL.startswith('postgres://'):

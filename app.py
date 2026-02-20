@@ -108,11 +108,28 @@ def try_remove_background(file_path):
     except Exception as e:
         return False, str(e)
 
-DATABASE_URL = (
-    os.environ.get('DATABASE_URL-9864bd776330b2743effe162f4cef50d')
-    or os.environ.get('DATABASE_URL')
-    or 'sqlite:///bible_ios.db'
+RAW_DATABASE_URL = (
+    os.environ.get('DATABASE_URL')
+    or os.environ.get('DATABASE_URL-9864bd776330b2743effe162f4cef50d')
 )
+
+def _resolve_database_url(value):
+    if not value:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    if '://' in raw:
+        return raw
+    # Allow indirection: DATABASE_URL=some_key -> use env var with that name or DATABASE_URL-some_key
+    if raw in os.environ:
+        return os.environ.get(raw)
+    alt_key = f"DATABASE_URL-{raw}"
+    if alt_key in os.environ:
+        return os.environ.get(alt_key)
+    return raw
+
+DATABASE_URL = _resolve_database_url(RAW_DATABASE_URL) or 'sqlite:///bible_ios.db'
 if DATABASE_URL and DATABASE_URL.startswith('postgres://'):
     DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
 
@@ -125,6 +142,10 @@ POSTGRES_AVAILABLE = True
 STRICT_DB = str(os.environ.get('STRICT_DB', '1')).strip().lower() in ('1', 'true', 'yes', 'on')
 if FORCE_SQLITE:
     DATABASE_URL = 'sqlite:///bible_ios.db'
+if RENDER_ENV and FORCE_SQLITE:
+    raise RuntimeError("DB_MODE=sqlite is not allowed in production. Set DB_MODE=postgres and DATABASE_URL.")
+if RENDER_ENV and not IS_POSTGRES:
+    raise RuntimeError("Postgres DATABASE_URL is required in production (Render).")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SQLITE_PATH = os.path.join(BASE_DIR, 'bible_ios.db')
 BOOK_TEXT_CACHE = {}
